@@ -1,3 +1,4 @@
+using ARMeilleure.Memory.Tracking;
 using Ryujinx.Graphics.GAL;
 using System;
 
@@ -32,6 +33,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
         private readonly (ulong, ulong)[] _modifiedRanges;
 
+        private MultiRegionHandle _memoryTracking;
+
         private readonly int[] _sequenceNumbers;
 
         /// <summary>
@@ -49,6 +52,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
             Handle = context.Renderer.CreateBuffer((int)size);
 
             _modifiedRanges = new (ulong, ulong)[size / PhysicalMemory.PageSize];
+
+            _memoryTracking = context.PhysicalMemory.BeginGranularTracking(address, size, 4096);
 
             _sequenceNumbers = new int[size / MemoryManager.PageSize];
         }
@@ -91,6 +96,38 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="size">Size in bytes of the range to synchronize</param>
         public void SynchronizeMemory(ulong address, ulong size)
         {
+            if (true)
+            {
+                _memoryTracking.QueryModified(address, size, (ulong mAddress, ulong mSize) =>
+                {
+                    if (mAddress < Address)
+                    {
+                        mSize -= Address - mAddress;
+                        mAddress = Address;
+                    }
+
+                    ulong maxSize = Address + Size - mAddress;
+
+                    if (mSize > maxSize)
+                    {
+                        mSize = maxSize;
+                    }
+
+                    int offset = (int)(mAddress - Address);
+
+                    HostBuffer.SetData(offset, _context.PhysicalMemory.GetSpan(mAddress, mSize));
+                });
+            } 
+            else
+            {
+                HostBuffer.SetData((int)(address - Address), _context.PhysicalMemory.GetSpan(address, size));
+            }
+
+            //HostBuffer.SetData(0, _context.PhysicalMemory.GetSpan(Address, Size));
+
+            //_memoryTracking.Reprotect();
+
+            /*
             int currentSequenceNumber = _context.SequenceNumber;
 
             bool needsSync = false;
@@ -127,6 +164,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 _context.Renderer.SetBufferData(Handle, offset, _context.PhysicalMemory.GetSpan(mAddress, (int)mSize));
             }
+            */
         }
 
         /// <summary>
@@ -160,6 +198,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public void Dispose()
         {
             _context.Renderer.DeleteBuffer(Handle);
+
+            _memoryTracking.Dispose();
         }
     }
 }

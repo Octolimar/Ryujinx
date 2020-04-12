@@ -1,3 +1,4 @@
+using ARMeilleure.Memory.Tracking;
 using Ryujinx.Common;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
@@ -80,6 +81,8 @@ namespace Ryujinx.Graphics.Gpu.Image
 
         private (ulong, ulong)[] _modifiedRanges;
 
+        private RegionHandle _memoryTracking;
+
         private int _referenceCount;
 
         private int _sequenceNumber;
@@ -99,7 +102,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             int         firstLayer,
             int         firstLevel)
         {
-            InitializeTexture(context, info, sizeInfo);
+            InitializeTexture(context, info, sizeInfo, true);
 
             _firstLayer = firstLayer;
             _firstLevel = firstLevel;
@@ -115,7 +118,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="sizeInfo">Size information of the texture</param>
         public Texture(GpuContext context, TextureInfo info, SizeInfo sizeInfo)
         {
-            InitializeTexture(context, info, sizeInfo);
+            InitializeTexture(context, info, sizeInfo, false);
 
             TextureCreateInfo createInfo = TextureManager.GetCreateInfo(info, context.Capabilities);
 
@@ -130,7 +133,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="context">GPU context that the texture belongs to</param>
         /// <param name="info">Texture information</param>
         /// <param name="sizeInfo">Size information of the texture</param>
-        private void InitializeTexture(GpuContext context, TextureInfo info, SizeInfo sizeInfo)
+        private void InitializeTexture(GpuContext context, TextureInfo info, SizeInfo sizeInfo, bool isView)
         {
             _context  = context;
             _sizeInfo = sizeInfo;
@@ -138,6 +141,12 @@ namespace Ryujinx.Graphics.Gpu.Image
             _modifiedRanges = new (ulong, ulong)[(sizeInfo.TotalSize / PhysicalMemory.PageSize) + 1];
 
             SetInfo(info);
+
+            if (true)//!isView)
+            {
+                _memoryTracking = _context.PhysicalMemory.BeginTracking(Address, Size);
+                if (isView) _memoryTracking.Reprotect();
+            }
 
             _viewStorage = this;
 
@@ -169,6 +178,9 @@ namespace Ryujinx.Graphics.Gpu.Image
             texture.HostTexture = HostTexture.CreateView(createInfo, firstLayer, firstLevel);
 
             _viewStorage.AddView(texture);
+
+            _memoryTracking?.Dispose();
+            _memoryTracking = null;
 
             return texture;
         }
@@ -299,24 +311,27 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public void SynchronizeMemory()
         {
-            // Texture buffers are not handled here, instead they are invalidated (if modified)
-            // when the texture is bound. This is handled by the buffer manager.
-            if ((_sequenceNumber == _context.SequenceNumber && _hasData) || Info.Target == Target.TextureBuffer)
+            /*
+            if (_sequenceNumber == _context.SequenceNumber && _hasData)
             {
                 return;
             }
 
             _sequenceNumber = _context.SequenceNumber;
+            */
 
-            int modifiedCount = _context.PhysicalMemory.QueryModified(Address, Size, ResourceName.Texture, _modifiedRanges);
+            //int modifiedCount = _context.PhysicalMemory.QueryModified(Address, Size, ResourceName.Texture, _modifiedRanges);
 
-            if (modifiedCount == 0 && _hasData)
+            if ((_memoryTracking?.Dirty != true && _hasData) || Info.Target == Target.TextureBuffer)
             {
                 return;
             }
 
             ReadOnlySpan<byte> data = _context.PhysicalMemory.GetSpan(Address, (int)Size);
 
+            _memoryTracking?.Reprotect();
+
+            /*
             // If the texture was modified by the host GPU, we do partial invalidation
             // of the texture by getting GPU data and merging in the pages of memory
             // that were modified.
@@ -355,6 +370,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
                 data = gpuData;
             }
+            */
 
             data = ConvertToHostCompatibleFormat(data);
 
@@ -433,6 +449,20 @@ namespace Ryujinx.Graphics.Gpu.Image
         public void Flush()
         {
             _context.PhysicalMemory.Write(Address, GetTextureDataFromGpu());
+        }
+
+
+        /// <summary>
+        /// Flushes the texture data, to be called from an external thread.
+        /// The Host backend must ensure that we have shared access to the resource from this thread.
+        /// This is used when flushing from memory access handlers.
+        /// </summary>
+        public void ExternalFlush()
+        {
+            _context.Renderer.BackgroundContextAction(() =>
+            {
+                Flush();
+            });
         }
 
         /// <summary>
@@ -999,6 +1029,11 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             _depth  = info.GetDepth();
             _layers = info.GetLayers();
+            if (_memoryTracking != null) {
+                _memoryTracking.Dispose();
+                _memoryTracking = _context.PhysicalMemory.BeginTracking(Address, Size);
+                if (_viewStorage != this || _views.Count == 0) _memoryTracking.Reprotect();
+            }
         }
 
         /// <summary>
@@ -1006,7 +1041,9 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public void SignalModified()
         {
-            Modified?.Invoke(this);
+            if (this != _viewStorage) _viewStorage.SignalModified();
+            _memoryTracking?.RegisterAction(ExternalFlush);
+            //Modified?.Invoke(this);
         }
 
         /// <summary>
@@ -1098,6 +1135,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         public void Dispose()
         {
             DisposeTextures();
+            _memoryTracking?.Dispose();
         }
     }
 }

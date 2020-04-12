@@ -117,6 +117,22 @@ namespace Ryujinx.Graphics.OpenGL
             _counters.QueueReset(type);
         }
 
+        public void BackgroundContextAction(Action action)
+        {
+            OpenTK.Graphics.GraphicsContext backgroundContext = _window.BackgroundContext;
+            lock (backgroundContext)
+            {
+                backgroundContext.MakeCurrent(_window.BackgroundWindow);
+                action();
+                backgroundContext.MakeCurrent(null);
+            }
+        }
+
+        public void InitializeBackgroundContext(OpenTK.Platform.IWindowInfo backgroundWindow)
+        {
+            _window.InitializeBackgroundContext(backgroundWindow);
+        }
+
         public void Dispose()
         {
             TextureCopy.Dispose();

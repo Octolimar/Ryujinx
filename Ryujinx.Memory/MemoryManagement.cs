@@ -24,6 +24,20 @@ namespace Ryujinx.Memory
             }
         }
 
+        public static IntPtr[] AllocateViews(ulong size, int views)
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                IntPtr sizeNint = new IntPtr((long)size);
+
+                return MemoryManagementWindows.AllocateViews(sizeNint, views);
+            }
+            else
+            {
+                throw new PlatformNotSupportedException();
+            }
+        }
+
         public static IntPtr Reserve(ulong size)
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))

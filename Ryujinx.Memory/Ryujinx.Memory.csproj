@@ -20,4 +20,10 @@
     <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Ryujinx.Memory.Native.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

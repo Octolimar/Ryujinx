@@ -1,4 +1,6 @@
+using OpenTK.Graphics;
 using OpenTK.Graphics.OpenGL;
+using OpenTK.Platform;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.OpenGL.Image;
 using System;
@@ -16,6 +18,9 @@ namespace Ryujinx.Graphics.OpenGL
         private int _height;
 
         private int _copyFramebufferHandle;
+
+        internal IWindowInfo BackgroundWindow { get; private set; }
+        internal GraphicsContext BackgroundContext { get; private set; }
 
         public Window(Renderer renderer)
         {
@@ -143,6 +148,12 @@ namespace Ryujinx.Graphics.OpenGL
             }
 
             return handle;
+        }
+
+        public void InitializeBackgroundContext(IWindowInfo backgroundWindow)
+        {
+            BackgroundWindow = backgroundWindow;
+            BackgroundContext = new GraphicsContext(GraphicsMode.Default, backgroundWindow, 3, 3, GraphicsContextFlags.ForwardCompatible);
         }
 
         public void Dispose()

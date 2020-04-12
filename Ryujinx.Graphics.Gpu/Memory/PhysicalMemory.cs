@@ -1,3 +1,4 @@
+using ARMeilleure.Memory.Tracking;
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -67,6 +68,29 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public int QueryModified(ulong address, ulong size, ResourceName name, (ulong, ulong)[] modifiedRanges = null)
         {
             return _cpuMemory.QueryModified(address, size, (int)name, modifiedRanges);
+        }
+
+        /// <summary>
+        /// Obtains a memory tracking handle for the given virtual region. This should be disposed when finished with.
+        /// </summary>
+        /// <param name="address">CPU virtual address of the region</param>
+        /// <param name="size">Size of the region</param>
+        /// <returns>The memory tracking handle</returns>
+        public RegionHandle BeginTracking(ulong address, ulong size)
+        {
+            return _cpuMemory.Tracking.BeginTracking(address, size);
+        }
+
+        /// <summary>
+        /// Obtains memory tracking handles for the given virtual region, with a specified granularity. This should be disposed when finished with.
+        /// </summary>
+        /// <param name="address">CPU virtual address of the region</param>
+        /// <param name="size">Size of the region</param>
+        /// <param name="granularity">Desired granularity of write tracking</param>
+        /// <returns>The memory tracking handles</returns>
+        public MultiRegionHandle BeginGranularTracking(ulong address, ulong size, ulong granularity)
+        {
+            return _cpuMemory.Tracking.BeginGranularTracking(address, size, granularity);
         }
     }
 }

@@ -1,6 +1,8 @@
-﻿using ARMeilleure.Memory;
+using ARMeilleure.Memory;
 using Ryujinx.Memory;
+﻿using ARMeilleure.Memory.Tracking;
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -27,6 +29,10 @@ namespace Ryujinx.Cpu
 
         public IntPtr PageTablePointer => _pageTable.Pointer;
 
+        public ulong WriteTrackOffset => (ulong)_backingMemory.MirrorPointer - (ulong)_backingMemory.Pointer;
+
+        public MemoryTracking Tracking { get; }
+
         /// <summary>
         /// Creates a new instance of the memory manager.
         /// </summary>
@@ -46,7 +52,11 @@ namespace Ryujinx.Cpu
             AddressSpaceBits = asBits;
             _addressSpaceSize = asSize;
             _backingMemory = backingMemory;
+
             _pageTable = new MemoryBlock((asSize / PageSize) * PteSize);
+
+            Tracking = new MemoryTracking(backingMemory);
+            Tracking.VirtualToPhysicalConverter = GetPhysicalRegions;
         }
 
         /// <summary>
@@ -68,6 +78,7 @@ namespace Ryujinx.Cpu
                 pa += PageSize;
                 size -= PageSize;
             }
+            Tracking.Map(va, pa, size);
         }
 
         /// <summary>
@@ -84,6 +95,7 @@ namespace Ryujinx.Cpu
                 va += PageSize;
                 size -= PageSize;
             }
+            Tracking.Unmap(va, size);
         }
 
         /// <summary>
@@ -254,6 +266,49 @@ namespace Ryujinx.Cpu
             }
 
             return true;
+        }
+
+        public (ulong address, ulong size)[] GetPhysicalRegions(ulong va, ulong size)
+        {
+            if (!ValidateAddress(va))
+            {
+                return null;
+            }
+
+            ulong endVa = (va + size + PageMask) & ~(ulong)PageMask;
+
+            va &= ~(ulong)PageMask;
+
+            int pages = (int)((endVa - va) / PageSize);
+
+            List<(ulong, ulong)> regions = new List<(ulong, ulong)>();
+
+            ulong regionStart = GetPhysicalAddressInternal(va);
+            ulong regionSize = PageSize;
+
+            for (int page = 0; page < pages - 1; page++)
+            {
+                if (!ValidateAddress(va + PageSize))
+                {
+                    return null;
+                }
+
+                ulong newPa = GetPhysicalAddressInternal(va + PageSize);
+
+                if (GetPhysicalAddressInternal(va) + PageSize != newPa)
+                {
+                    regions.Add((regionStart, regionSize));
+                    regionStart = newPa;
+                    regionSize = 0;
+                }
+
+                va += PageSize;
+                regionSize += PageSize;
+            }
+
+            regions.Add((regionStart, regionSize));
+
+            return regions.ToArray();
         }
 
         private void ReadImpl(ulong va, Span<byte> data)

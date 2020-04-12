@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Ryujinx.Memory
@@ -9,12 +10,26 @@ namespace Ryujinx.Memory
     /// </summary>
     public sealed class MemoryBlock : IDisposable
     {
+        public delegate bool MemoryTrackingAction(ulong address, bool write);
+
+        [DllImport("Ryujinx.Memory.Native.dll")]
+        private static extern IntPtr StartTrackingRegion(IntPtr address, IntPtr size, IntPtr action);
+
+        [DllImport("Ryujinx.Memory.Native.dll")]
+        private static extern void StopTrackingRegion(IntPtr region);
+
         private IntPtr _pointer;
+        private IntPtr _mirrorPointer;
 
         /// <summary>
         /// Pointer to the memory block data.
         /// </summary>
         public IntPtr Pointer => _pointer;
+
+        /// <summary>
+        /// Pointer to the memory block data.
+        /// </summary>
+        public IntPtr MirrorPointer => _mirrorPointer;
 
         /// <summary>
         /// Size of the memory block.
@@ -28,7 +43,7 @@ namespace Ryujinx.Memory
         /// <param name="flags">Flags that control memory block memory allocation</param>
         /// <exception cref="OutOfMemoryException">Throw when there's no enough memory to allocate the requested size</exception>
         /// <exception cref="PlatformNotSupportedException">Throw when the current platform is not supported</exception>
-        public MemoryBlock(ulong size, MemoryAllocationFlags flags = MemoryAllocationFlags.None)
+        public MemoryBlock(ulong size, MemoryAllocationFlags flags = MemoryAllocationFlags.None, bool mirror = false)
         {
             if (flags.HasFlag(MemoryAllocationFlags.Reserve))
             {
@@ -36,7 +51,16 @@ namespace Ryujinx.Memory
             }
             else
             {
-                _pointer = MemoryManagement.Allocate(size);
+                if (mirror)
+                {
+                    IntPtr[] pointers = MemoryManagement.AllocateViews(size, 2);
+                    _pointer = pointers[0];
+                    _mirrorPointer = pointers[1];
+                } 
+                else
+                {
+                    _pointer = MemoryManagement.Allocate(size);
+                }
             }
 
             Size = size;
@@ -68,6 +92,20 @@ namespace Ryujinx.Memory
         public void Reprotect(ulong offset, ulong size, MemoryPermission permission)
         {
             MemoryManagement.Reprotect(GetPointerInternal(offset, size), size, permission);
+        }
+
+        /// <summary>
+        /// Reprotects a region of memory.
+        /// </summary>
+        /// <param name="offset">Starting offset of the range to be reprotected</param>
+        /// <param name="size">Size of the range to be reprotected</param>
+        /// <param name="permission">New memory permissions</param>
+        /// <exception cref="ObjectDisposedException">Throw when the memory block has already been disposed</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Throw when either <paramref name="offset"/> or <paramref name="size"/> are out of range</exception>
+        /// <exception cref="MemoryProtectionException">Throw when <paramref name="permission"/> is invalid</exception>
+        public void ReprotectMirror(ulong offset, ulong size, MemoryPermission permission)
+        {
+            MemoryManagement.Reprotect((IntPtr)(_mirrorPointer.ToInt64() + (long)offset), size, permission);
         }
 
         /// <summary>
@@ -247,6 +285,20 @@ namespace Ryujinx.Memory
         private IntPtr PtrAddr(IntPtr pointer, ulong offset)
         {
             return (IntPtr)(pointer.ToInt64() + (long)offset);
+        }
+
+        private GCHandle _delegateHandle;
+
+        /// <summary>
+        /// Registers an action to call when a tracked read/write occurs on the region.
+        /// (called from memory protection signal handler)
+        /// </summary>
+        /// <param name="action">The action to call</param>
+        public void RegisterTrackingAction(MemoryTrackingAction action)
+        {
+            _delegateHandle = GCHandle.Alloc(action);
+            
+            StartTrackingRegion(_mirrorPointer, (IntPtr)Size, Marshal.GetFunctionPointerForDelegate(action));
         }
 
         /// <summary>
