@@ -79,13 +79,9 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public ulong Size => (ulong)_sizeInfo.TotalSize;
 
-        private (ulong, ulong)[] _modifiedRanges;
-
         private RegionHandle _memoryTracking;
 
         private int _referenceCount;
-
-        private int _sequenceNumber;
 
         /// <summary>
         /// Constructs a new instance of the cached GPU texture.
@@ -137,8 +133,6 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             _context  = context;
             _sizeInfo = sizeInfo;
-
-            _modifiedRanges = new (ulong, ulong)[(sizeInfo.TotalSize / PhysicalMemory.PageSize) + 1];
 
             SetInfo(info);
 
@@ -311,66 +305,14 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public void SynchronizeMemory()
         {
-            /*
-            if (_sequenceNumber == _context.SequenceNumber && _hasData)
-            {
-                return;
-            }
-
-            _sequenceNumber = _context.SequenceNumber;
-            */
-
-            //int modifiedCount = _context.PhysicalMemory.QueryModified(Address, Size, ResourceName.Texture, _modifiedRanges);
-
             if ((_memoryTracking?.Dirty != true && _hasData) || Info.Target == Target.TextureBuffer)
             {
                 return;
             }
 
-            ReadOnlySpan<byte> data = _context.PhysicalMemory.GetSpan(Address, (int)Size);
-
             _memoryTracking?.Reprotect();
 
-            /*
-            // If the texture was modified by the host GPU, we do partial invalidation
-            // of the texture by getting GPU data and merging in the pages of memory
-            // that were modified.
-            // Note that if ASTC is not supported by the GPU we can't read it back since
-            // it will use a different format. Since applications shouldn't be writing
-            // ASTC textures from the GPU anyway, ignoring it should be safe.
-            if (_context.Methods.TextureManager.IsTextureModified(this) && !Info.FormatInfo.Format.IsAstc())
-            {
-                Span<byte> gpuData = GetTextureDataFromGpu();
-
-                ulong endAddress = Address + Size;
-
-                for (int i = 0; i < modifiedCount; i++)
-                {
-                    (ulong modifiedAddress, ulong modifiedSize) = _modifiedRanges[i];
-
-                    ulong endModifiedAddress = modifiedAddress + modifiedSize;
-
-                    if (modifiedAddress < Address)
-                    {
-                        modifiedAddress = Address;
-                    }
-
-                    if (endModifiedAddress > endAddress)
-                    {
-                        endModifiedAddress = endAddress;
-                    }
-
-                    modifiedSize = endModifiedAddress - modifiedAddress;
-
-                    int offset = (int)(modifiedAddress - Address);
-                    int length = (int)modifiedSize;
-
-                    data.Slice(offset, length).CopyTo(gpuData.Slice(offset, length));
-                }
-
-                data = gpuData;
-            }
-            */
+            ReadOnlySpan<byte> data = _context.PhysicalMemory.GetSpan(Address, (int)Size);
 
             data = ConvertToHostCompatibleFormat(data);
 
@@ -463,6 +405,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             {
                 Flush();
             });
+            _memoryTracking?.Reprotect();
         }
 
         /// <summary>
@@ -1043,7 +986,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             if (this != _viewStorage) _viewStorage.SignalModified();
             _memoryTracking?.RegisterAction(ExternalFlush);
-            //Modified?.Invoke(this);
+            Modified?.Invoke(this);
         }
 
         /// <summary>
@@ -1112,6 +1055,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             // already deleted (views count is 0).
             if (_referenceCount == 0 && _views.Count == 0)
             {
+                _memoryTracking?.Dispose();
                 DisposeTextures();
             }
         }

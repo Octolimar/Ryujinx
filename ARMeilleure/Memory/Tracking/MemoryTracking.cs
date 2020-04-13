@@ -11,9 +11,14 @@ namespace ARMeilleure.Memory.Tracking
         private RangeList<PhysicalRegion> _physicalRegions;
 
         public Func<ulong, ulong, (ulong address, ulong size)[]> VirtualToPhysicalConverter;
+        public Action<ulong, ulong, MemoryProtection> VirtualProtect;
 
         private IMemoryBlock _block;
         internal object TrackingLock = new object();
+
+        // Only use these from within the lock.
+        private VirtualRegion[] _virtualResults = new VirtualRegion[10];
+        private PhysicalRegion[] _physicalResults = new PhysicalRegion[10];
 
         public MemoryTracking(IMemoryBlock block)
         {
@@ -74,6 +79,7 @@ namespace ARMeilleure.Memory.Tracking
             else
             {
                 ulong lastAddress = pa;
+                ulong endAddress = pa + size;
 
                 for (int i = 0; i < count; i++)
                 {
@@ -110,6 +116,14 @@ namespace ARMeilleure.Memory.Tracking
                     list.Add(region);
                     lastAddress = region.EndAddress;
                 }
+
+                if (lastAddress < endAddress)
+                {
+                    // There is a gap between this region and the end. We need to fill it.
+                    PhysicalRegion fillRegion = new PhysicalRegion(this, lastAddress, endAddress - lastAddress);
+                    list.Add(fillRegion);
+                    _physicalRegions.Add(fillRegion);
+                }
             }
         }
 
@@ -144,7 +158,9 @@ namespace ARMeilleure.Memory.Tracking
         private (ulong address, ulong size) PageAlign(ulong address, ulong size)
         {
             ulong pageMask = MemoryManager.PageSize - 1;
-            return (address & (~pageMask), ((address + size + pageMask) & (~pageMask)) - address);
+            ulong rA = address & (~pageMask);
+            ulong rS = ((address + size + pageMask) & (~pageMask)) - rA;
+            return (rA, rS);
         }
 
         public MultiRegionHandle BeginGranularTracking(ulong address, ulong size, ulong granularity)
@@ -157,7 +173,7 @@ namespace ARMeilleure.Memory.Tracking
                 handles.Add(BeginTracking(address, Math.Min(granularity, size)));
             }
 
-            return new MultiRegionHandle(handles);
+            return new MultiRegionHandle(handles, granularity);
         }
 
         public RegionHandle BeginTracking(ulong address, ulong size)
@@ -167,10 +183,10 @@ namespace ARMeilleure.Memory.Tracking
 
             (address, size) = PageAlign(address, size);
 
-            var results = new VirtualRegion[1];
-
             lock (TrackingLock)
             {
+                var results = _virtualResults;
+
                 int count = _virtualRegions.FindOverlaps(address, size, ref results);
                 VirtualRegion region;
 
@@ -199,7 +215,7 @@ namespace ARMeilleure.Memory.Tracking
 
             lock (TrackingLock)
             {
-                var results = new PhysicalRegion[1];
+                var results = _physicalResults;
                 int count = _physicalRegions.FindOverlapsNonOverlapping(address, 8, ref results); // TODO: get/use the actual access size?
 
                 if (count == 0)
@@ -217,9 +233,36 @@ namespace ARMeilleure.Memory.Tracking
             return true;
         }
 
-        internal void ProtectRegion(AbstractRegion region, MemoryProtection permission)
+        public bool VirtualMemoryEvent(ulong address, ulong size, bool write)
+        {
+            lock (TrackingLock)
+            {
+                var results = _virtualResults;
+                int count = _virtualRegions.FindOverlaps(address, size, ref results); // TODO: get/use the actual access size?
+
+                if (count == 0)
+                {
+                    return false; // We can't handle this - it's probably a real invalid access.
+                }
+
+                for (int i = 0; i < count; i++)
+                {
+                    VirtualRegion region = results[i];
+                    region.Signal(write);
+                }
+            }
+
+            return true;
+        }
+
+        internal void ProtectPhysicalRegion(PhysicalRegion region, MemoryProtection permission)
         {
             _block.MapWithPermission(region.Address, region.Size, permission);
+        }
+
+        internal void ProtectVirtualRegion(VirtualRegion region, MemoryProtection permission)
+        {
+            VirtualProtect(region.Address, region.Size, permission);
         }
     }
 }

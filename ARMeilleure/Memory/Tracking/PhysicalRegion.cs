@@ -5,22 +5,25 @@ namespace ARMeilleure.Memory.Tracking
     class PhysicalRegion : AbstractRegion
     {
         public List<VirtualRegion> VirtualParents = new List<VirtualRegion>();
+        public MemoryProtection Protection { get; private set; }
         public MemoryTracking Tracking;
 
         public PhysicalRegion(MemoryTracking tracking, ulong address, ulong size) : base(address, size)
         {
             Tracking = tracking;
+            Protection = MemoryProtection.ReadAndWrite;
         }
 
         public void Signal(bool write)
         {
             // Assumes the tracking lock has already been obtained.
 
+            Protection = MemoryProtection.ReadAndWrite;
+            Tracking.ProtectPhysicalRegion(this, MemoryProtection.ReadAndWrite); // Remove our protection immedately.
             foreach (var parent in VirtualParents)
             {
                 parent.Signal(write);
             }
-            UpdateProtection();
         }
 
         public void UpdateProtection()
@@ -36,7 +39,11 @@ namespace ARMeilleure.Memory.Tracking
                     if (result == 0) break;
                 }
 
-                Tracking.ProtectRegion(this, result);
+                if (Protection != result)
+                {
+                    Protection = result;
+                    Tracking.ProtectPhysicalRegion(this, result);
+                }
             }
         }
 
@@ -51,9 +58,19 @@ namespace ARMeilleure.Memory.Tracking
             return newRegion;
         }
 
-        public void RemoveParent(VirtualRegion region)
+        public bool RemoveParent(VirtualRegion region)
         {
             VirtualParents.Remove(region);
+            UpdateProtection();
+            if (VirtualParents.Count == 0)
+            {
+                return true;
+            }
+            return false;
+        }
+
+        public void TryDelete()
+        {
             if (VirtualParents.Count == 0)
             {
                 Tracking.RemovePhysical(this);

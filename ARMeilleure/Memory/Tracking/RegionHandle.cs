@@ -42,8 +42,11 @@ namespace ARMeilleure.Memory.Tracking
 
         public void RegisterAction(Action action)
         {
-            _preAction = action;
-            _region.UpdateProtection();
+            Action lastAction = Interlocked.Exchange(ref _preAction, action);
+            if (lastAction == null)
+            {
+                _region.UpdateProtection();
+            }
         }
 
         public void Dispose()

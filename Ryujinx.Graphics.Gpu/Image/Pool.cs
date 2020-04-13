@@ -63,8 +63,6 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <returns>The GPU resource with the given ID</returns>
         public abstract T Get(int id);
 
-        private static bool FullResetAlways;
-
         /// <summary>
         /// Synchronizes host memory with guest memory.
         /// This causes invalidation of pool entries,
@@ -72,38 +70,8 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public void SynchronizeMemory()
         {
-            if (FullResetAlways)
+            _memoryTracking.QueryModified((ulong mAddress, ulong mSize) =>
             {
-                InvalidateRangeImpl(Address, Size);
-            } 
-            else
-            {
-                _memoryTracking.QueryModified((ulong mAddress, ulong mSize) =>
-                {
-                    if (mAddress < Address)
-                    {
-                        //mSize -= Address - mAddress;
-                        mAddress = Address;
-                    }
-
-                    ulong maxSize = Address + Size - mAddress;
-
-                    if (mSize > maxSize)
-                    {
-                        mSize = maxSize;
-                    }
-
-                    InvalidateRangeImpl(mAddress, mSize);
-                });
-            }
-
-            /*
-            int count = Context.PhysicalMemory.QueryModified(Address, Size, ResourceName.TexturePool, _modifiedRanges);
-
-            for (int index = 0; index < count; index++)
-            {
-                (ulong mAddress, ulong mSize) = _modifiedRanges[index];
-
                 if (mAddress < Address)
                 {
                     mAddress = Address;
@@ -117,8 +85,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 }
 
                 InvalidateRangeImpl(mAddress, mSize);
-            }
-            */
+            });
         }
 
         private void InvalidateRangeInternal(ulong offset, int size)

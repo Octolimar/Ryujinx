@@ -31,8 +31,6 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// </summary>
         public ulong EndAddress => Address + Size;
 
-        private readonly (ulong, ulong)[] _modifiedRanges;
-
         private MultiRegionHandle _memoryTracking;
 
         private readonly int[] _sequenceNumbers;
@@ -50,8 +48,6 @@ namespace Ryujinx.Graphics.Gpu.Memory
             Size     = size;
 
             Handle = context.Renderer.CreateBuffer((int)size);
-
-            _modifiedRanges = new (ulong, ulong)[size / PhysicalMemory.PageSize];
 
             _memoryTracking = context.PhysicalMemory.BeginGranularTracking(address, size, 4096);
 
@@ -96,75 +92,24 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="size">Size in bytes of the range to synchronize</param>
         public void SynchronizeMemory(ulong address, ulong size)
         {
-            if (true)
+            _memoryTracking.QueryModified(address, size, (ulong mAddress, ulong mSize) =>
             {
-                _memoryTracking.QueryModified(address, size, (ulong mAddress, ulong mSize) =>
+                if (mAddress < Address)
                 {
-                    if (mAddress < Address)
-                    {
-                        mSize -= Address - mAddress;
-                        mAddress = Address;
-                    }
-
-                    ulong maxSize = Address + Size - mAddress;
-
-                    if (mSize > maxSize)
-                    {
-                        mSize = maxSize;
-                    }
-
-                    int offset = (int)(mAddress - Address);
-
-                    HostBuffer.SetData(offset, _context.PhysicalMemory.GetSpan(mAddress, mSize));
-                });
-            } 
-            else
-            {
-                HostBuffer.SetData((int)(address - Address), _context.PhysicalMemory.GetSpan(address, size));
-            }
-
-            //HostBuffer.SetData(0, _context.PhysicalMemory.GetSpan(Address, Size));
-
-            //_memoryTracking.Reprotect();
-
-            /*
-            int currentSequenceNumber = _context.SequenceNumber;
-
-            bool needsSync = false;
-
-            ulong buffOffset = address - Address;
-
-            ulong buffEndOffset = (buffOffset + size + MemoryManager.PageMask) & ~MemoryManager.PageMask;
-
-            int startIndex = (int)(buffOffset    / MemoryManager.PageSize);
-            int endIndex   = (int)(buffEndOffset / MemoryManager.PageSize);
-
-            for (int index = startIndex; index < endIndex; index++)
-            {
-                if (_sequenceNumbers[index] != currentSequenceNumber)
-                {
-                    _sequenceNumbers[index] = currentSequenceNumber;
-
-                    needsSync = true;
+                    mAddress = Address;
                 }
-            }
 
-            if (!needsSync)
-            {
-                return;
-            }
+                ulong maxSize = Address + Size - mAddress;
 
-            int count = _context.PhysicalMemory.QueryModified(address, size, ResourceName.Buffer, _modifiedRanges);
-
-            for (int index = 0; index < count; index++)
-            {
-                (ulong mAddress, ulong mSize) = _modifiedRanges[index];
+                if (mSize > maxSize)
+                {
+                    mSize = maxSize;
+                }
 
                 int offset = (int)(mAddress - Address);
 
                 _context.Renderer.SetBufferData(Handle, offset, _context.PhysicalMemory.GetSpan(mAddress, (int)mSize));
             }
-            */
         }
 
         /// <summary>

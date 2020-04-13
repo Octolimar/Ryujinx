@@ -25,6 +25,7 @@ namespace ARMeilleure.Memory.Tracking
         {
             // Assumes the tracking lock has already been obtained.
 
+            Tracking.ProtectVirtualRegion(this, MemoryProtection.ReadAndWrite); // Remove our protection immedately.
             foreach (var handle in Handles)
             {
                 handle.Signal(write);
@@ -50,6 +51,7 @@ namespace ARMeilleure.Memory.Tracking
         {
             // Re-evaluate protection for all physical children.
 
+            Tracking.ProtectVirtualRegion(this, GetRequiredPermission());
             lock (Tracking.TrackingLock)
             {
                 foreach (var child in PhysicalChildren)
@@ -71,6 +73,7 @@ namespace ARMeilleure.Memory.Tracking
 
         public void RemoveHandle(RegionHandle handle)
         {
+            bool removedRegions = false;
             lock (Tracking.TrackingLock)
             {
                 Handles.Remove(handle);
@@ -79,7 +82,19 @@ namespace ARMeilleure.Memory.Tracking
                     Tracking.RemoveVirtual(this);
                     foreach (var child in PhysicalChildren)
                     {
-                        child.RemoveParent(this);
+                        removedRegions |= child.RemoveParent(this);
+                    }
+                }
+            }
+
+            if (removedRegions)
+            {
+                // The first lock will unprotect any regions that have been removed. This second lock will remove them.
+                lock (Tracking.TrackingLock)
+                {
+                    foreach (var child in PhysicalChildren)
+                    {
+                        child.TryDelete();
                     }
                 }
             }

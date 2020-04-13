@@ -122,9 +122,16 @@ namespace Ryujinx.Graphics.OpenGL
             OpenTK.Graphics.GraphicsContext backgroundContext = _window.BackgroundContext;
             lock (backgroundContext)
             {
-                backgroundContext.MakeCurrent(_window.BackgroundWindow);
-                action();
-                backgroundContext.MakeCurrent(null);
+                if (OpenTK.Graphics.GraphicsContext.CurrentContext != null)
+                {
+                    action(); // We have a context already - use that (assuming it is the main one).
+                }
+                else
+                {
+                    backgroundContext.MakeCurrent(_window.BackgroundWindow);
+                    action();
+                    backgroundContext.MakeCurrent(null);
+                }
             }
         }
 
