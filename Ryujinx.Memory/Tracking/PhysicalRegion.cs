@@ -1,25 +1,26 @@
-﻿using System.Collections.Generic;
+﻿using Ryujinx.Memory.Range;
+using System.Collections.Generic;
 
-namespace ARMeilleure.Memory.Tracking
+namespace Ryujinx.Memory.Tracking
 {
     class PhysicalRegion : AbstractRegion
     {
         public List<VirtualRegion> VirtualParents = new List<VirtualRegion>();
-        public MemoryProtection Protection { get; private set; }
+        public MemoryPermission Protection { get; private set; }
         public MemoryTracking Tracking;
 
         public PhysicalRegion(MemoryTracking tracking, ulong address, ulong size) : base(address, size)
         {
             Tracking = tracking;
-            Protection = MemoryProtection.ReadAndWrite;
+            Protection = MemoryPermission.ReadAndWrite;
         }
 
         public void Signal(bool write)
         {
             // Assumes the tracking lock has already been obtained.
 
-            Protection = MemoryProtection.ReadAndWrite;
-            Tracking.ProtectPhysicalRegion(this, MemoryProtection.ReadAndWrite); // Remove our protection immedately.
+            Protection = MemoryPermission.ReadAndWrite;
+            Tracking.ProtectPhysicalRegion(this, MemoryPermission.ReadAndWrite); // Remove our protection immedately.
             foreach (var parent in VirtualParents)
             {
                 parent.Signal(write);
@@ -32,7 +33,7 @@ namespace ARMeilleure.Memory.Tracking
 
             lock (Tracking.TrackingLock)
             {
-                MemoryProtection result = MemoryProtection.ReadAndWrite;
+                MemoryPermission result = MemoryPermission.ReadAndWrite;
                 foreach (var parent in VirtualParents)
                 {
                     result &= parent.GetRequiredPermission();
@@ -47,13 +48,17 @@ namespace ARMeilleure.Memory.Tracking
             }
         }
 
-        public PhysicalRegion Split(ulong splitAddress)
+        public override INonOverlappingRange Split(ulong splitAddress)
         {
             PhysicalRegion newRegion = new PhysicalRegion(Tracking, splitAddress, EndAddress - splitAddress);
             Size = splitAddress - Address;
 
             // The new region inherits all of our parents.
             newRegion.VirtualParents = new List<VirtualRegion>(VirtualParents);
+            foreach (var parent in VirtualParents)
+            {
+                parent.AddChild(newRegion);
+            }
 
             return newRegion;
         }

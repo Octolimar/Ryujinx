@@ -2,14 +2,15 @@
 using System.Collections;
 using System.Collections.Generic;
 
-namespace ARMeilleure.Memory.Tracking
+namespace Ryujinx.Memory.Tracking
 {
-    public class MultiRegionHandle : IDisposable
+    public class MultiRegionHandle : IMultiRegionHandle
     {
         private RegionHandle[] _handles;
         private ulong Address;
         private ulong Granularity;
         private ulong Size;
+
         public bool Dirty { get; private set; } = true;
 
         internal MultiRegionHandle(List<RegionHandle> handles, ulong granularity)
@@ -27,7 +28,7 @@ namespace ARMeilleure.Memory.Tracking
             }
         }
 
-        public void SignalWrite()
+        internal void SignalWrite()
         {
             Dirty = true;
         }
@@ -59,7 +60,7 @@ namespace ARMeilleure.Memory.Tracking
                         modifiedAction(rgStart, rgSize);
                         rgSize = 0;
                     }
-                    rgStart = handle.Address + handle.Size;
+                    rgStart = handle.EndAddress;
                 }
             }
 
@@ -95,7 +96,7 @@ namespace ARMeilleure.Memory.Tracking
                         modifiedAction(rgStart, rgSize);
                         rgSize = 0;
                     }
-                    rgStart = handle.Address + handle.Size;
+                    rgStart = handle.EndAddress;
                 }
             }
 
@@ -103,16 +104,9 @@ namespace ARMeilleure.Memory.Tracking
             {
                 modifiedAction(rgStart, rgSize);
             }
-
-            /*
-            if (address != Address || Size != size)
-            {
-                Dirty |= CalculateDirty();
-            }
-            */
         }
 
-        public bool CalculateDirty()
+        private bool CalculateDirty()
         {
             bool dirty = false;
             foreach (RegionHandle handle in _handles)

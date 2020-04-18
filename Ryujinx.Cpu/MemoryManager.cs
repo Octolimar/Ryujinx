@@ -1,18 +1,19 @@
 using ARMeilleure.Memory;
 using Ryujinx.Memory;
-﻿using ARMeilleure.Memory.Tracking;
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Ryujinx.Memory.Tracking;
+using Ryujinx.Cpu.Tracking;
 
 namespace Ryujinx.Cpu
 {
     /// <summary>
     /// Represents a CPU memory manager.
     /// </summary>
-    public sealed class MemoryManager : IMemoryManager, IDisposable
+    public sealed class MemoryManager : IMemoryManager, IDisposable, IVirtualMemoryManager
     {
         public const int PageBits = 12;
         public const int PageSize = 1 << PageBits;
@@ -55,9 +56,7 @@ namespace Ryujinx.Cpu
 
             _pageTable = new MemoryBlock((asSize / PageSize) * PteSize);
 
-            Tracking = new MemoryTracking(backingMemory);
-            Tracking.VirtualToPhysicalConverter = GetPhysicalRegions;
-            Tracking.VirtualProtect = MarkRegionProtection;
+            Tracking = new MemoryTracking(this, backingMemory, PageSize);
         }
 
         /// <summary>
@@ -143,7 +142,7 @@ namespace Ryujinx.Cpu
                 return;
             }
 
-            MarkRegionAsModified(va, (ulong)data.Length);
+            MarkRegionAsModified(va, (ulong)data.Length, true);
 
             if (IsContiguous(va, data.Length))
             {
@@ -194,6 +193,7 @@ namespace Ryujinx.Cpu
 
             if (IsContiguous(va, size))
             {
+                //MarkRegionAsModified(va, (ulong)size, false);
                 return _backingMemory.GetSpan(GetPhysicalAddressInternal(va), size);
             }
             else
@@ -222,7 +222,7 @@ namespace Ryujinx.Cpu
                 ThrowMemoryNotContiguous();
             }
 
-            MarkRegionAsModified(va, (ulong)Unsafe.SizeOf<T>());
+            MarkRegionAsModified(va, (ulong)Unsafe.SizeOf<T>(), true);
 
             return ref _backingMemory.GetRef<T>(GetPhysicalAddressInternal(va));
         }
@@ -232,7 +232,7 @@ namespace Ryujinx.Cpu
         // TODO: Remove that once we have proper 8-bits and 16-bits CAS.
         public ref T GetRefNoChecks<T>(ulong va) where T : unmanaged
         {
-            MarkRegionAsModified(va, (ulong)Unsafe.SizeOf<T>());
+            MarkRegionAsModified(va, (ulong)Unsafe.SizeOf<T>(), true);
 
             return ref _backingMemory.GetRef<T>(GetPhysicalAddressInternal(va));
         }
@@ -319,6 +319,7 @@ namespace Ryujinx.Cpu
                 return;
             }
 
+            //MarkRegionAsModified(va, (ulong)data.Length, false);
             int offset = 0, size;
 
             if ((va & PageMask) != 0)
@@ -340,99 +341,6 @@ namespace Ryujinx.Cpu
 
                 _backingMemory.GetSpan(pa, size).CopyTo(data.Slice(offset, size));
             }
-        }
-
-        /// <summary>
-        /// Checks if a specified virtual memory region has been modified by the CPU since the last call.
-        /// </summary>
-        /// <param name="va">Virtual address of the region</param>
-        /// <param name="size">Size of the region</param>
-        /// <param name="id">Resource identifier number (maximum is 15)</param>
-        /// <param name="modifiedRanges">Optional array where the modified ranges should be written</param>
-        /// <returns>The number of modified ranges</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int QueryModified(ulong va, ulong size, int id, (ulong, ulong)[] modifiedRanges = null)
-        {
-            if (!ValidateAddress(va))
-            {
-                return 0;
-            }
-
-            ulong maxSize = _addressSpaceSize - va;
-
-            if (size > maxSize)
-            {
-                size = maxSize;
-            }
-
-            // We need to ensure that the tagged pointer value is negative,
-            // JIT generated code checks that to take the slow paths and call the MemoryManager Read/Write methods.
-            long tag = (0x8000L | (1L << id)) << 48;
-
-            ulong endVa = (va + size + PageMask) & ~(ulong)PageMask;
-
-            va &= ~(ulong)PageMask;
-
-            ulong rgStart = va;
-            ulong rgSize = 0;
-
-            int rangeIndex = 0;
-
-            for (; va < endVa; va += PageSize)
-            {
-                while (true)
-                {
-                    ref long pte = ref _pageTable.GetRef<long>((va >> PageBits) * PteSize);
-
-                    long pteValue = pte;
-
-                    // If the PTE value is 0, that means that the page is unmapped.
-                    // We behave as if the page was not modified, since modifying a page
-                    // that is not even mapped is impossible.
-                    if ((pteValue & tag) == tag || pteValue == 0)
-                    {
-                        if (rgSize != 0)
-                        {
-                            if (modifiedRanges != null && rangeIndex < modifiedRanges.Length)
-                            {
-                                modifiedRanges[rangeIndex] = (rgStart, rgSize);
-                            }
-
-                            rangeIndex++;
-
-                            rgSize = 0;
-                        }
-
-                        break;
-                    }
-                    else
-                    {
-                        if (Interlocked.CompareExchange(ref pte, pteValue | tag, pteValue) == pteValue)
-                        {
-                            if (rgSize == 0)
-                            {
-                                rgStart = va;
-                            }
-
-                            rgSize += PageSize;
-
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (rgSize != 0)
-            {
-                if (modifiedRanges != null && rangeIndex < modifiedRanges.Length)
-                {
-                    modifiedRanges[rangeIndex] = (rgStart, rgSize);
-                }
-
-                rangeIndex++;
-            }
-
-            return rangeIndex;
         }
 
         /// <summary>
@@ -479,10 +387,10 @@ namespace Ryujinx.Cpu
             return PteToPa(_pageTable.Read<ulong>((va / PageSize) * PteSize) & ~(0xffffUL << 48)) + (va & PageMask);
         }
 
-        private void MarkRegionProtection(ulong va, ulong size, MemoryProtection protection)
+        public void Reprotect(ulong va, ulong size, MemoryPermission protection)
         {
             // Protection is inverted on software pages, since the default value is 0.
-            protection = (~protection) & MemoryProtection.ReadAndWrite;
+            protection = (~protection) & MemoryPermission.ReadAndWrite;
 
             long tag = (long)protection << 48;
             ulong endVa = (va + size + PageMask) & ~(ulong)PageMask;
@@ -503,16 +411,39 @@ namespace Ryujinx.Cpu
             }
         }
 
-        private void MarkRegionAsModified(ulong va, ulong size)
+        /// <summary>
+        /// Obtains a memory tracking handle for the given virtual region. This should be disposed when finished with.
+        /// </summary>
+        /// <param name="address">CPU virtual address of the region</param>
+        /// <param name="size">Size of the region</param>
+        /// <returns>The memory tracking handle</returns>
+        public CpuRegionHandle BeginTracking(ulong address, ulong size)
+        {
+            return new CpuRegionHandle(Tracking.BeginTracking(address, size));
+        }
+
+        /// <summary>
+        /// Obtains memory tracking handles for the given virtual region, with a specified granularity. This should be disposed when finished with.
+        /// </summary>
+        /// <param name="address">CPU virtual address of the region</param>
+        /// <param name="size">Size of the region</param>
+        /// <param name="granularity">Desired granularity of write tracking</param>
+        /// <returns>The memory tracking handles</returns>
+        public CpuMultiRegionHandle BeginGranularTracking(ulong address, ulong size, ulong granularity)
+        {
+            return new CpuMultiRegionHandle(Tracking.BeginGranularTracking(address, size, granularity));
+        }
+
+        private void MarkRegionAsModified(ulong va, ulong size, bool write)
         {
             // We emulate guard pages for software memory access.
             // Ideally we'd just want to use the host guarded memory, but entering our exception handler
             // from managed and then calling a managed function would call a native -> managed transition
             // from a "managed" state, leading to an engine execution exception.
 
-            bool write = true;
-
-            long tag = (write ? 2L : 1L) << 48;
+            // Write tag includes read protection, since we don't have any read actions that aren't performed before write too.
+            long tag = (write ? 3L : 1L) << 48;
+            long invTag = ~tag;
 
             ulong endVa = (va + size + PageMask) & ~(ulong)PageMask;
 
@@ -528,11 +459,11 @@ namespace Ryujinx.Cpu
 
                     if ((pte & tag) != 0)
                     {
-                        Tracking.VirtualMemoryEvent(va, size, true);
+                        Tracking.VirtualMemoryEvent(va, size, write);
                         return;
                     }
                 }
-                while (Interlocked.CompareExchange(ref pageRef, pte & ~(0xffffL << 48), pte) != pte);
+                while (Interlocked.CompareExchange(ref pageRef, pte & invTag, pte) != pte);
 
                 va += PageSize;
             }

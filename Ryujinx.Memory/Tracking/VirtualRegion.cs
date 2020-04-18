@@ -1,6 +1,7 @@
-﻿using System.Collections.Generic;
+﻿using Ryujinx.Memory.Range;
+using System.Collections.Generic;
 
-namespace ARMeilleure.Memory.Tracking
+namespace Ryujinx.Memory.Tracking
 {
     class VirtualRegion : AbstractRegion
     {
@@ -13,7 +14,23 @@ namespace ARMeilleure.Memory.Tracking
         {
             Tracking = tracking;
 
-            PhysicalChildren = tracking.GetPhysicalRegionsForVirtual(address, size);
+            UpdatePhysicalChildren();
+        }
+
+        public void ClearPhysicalChildren()
+        {
+            if (PhysicalChildren != null)
+            {
+                foreach (PhysicalRegion child in PhysicalChildren)
+                {
+                    child.RemoveParent(this);
+                }
+            }
+        }
+
+        public void UpdatePhysicalChildren()
+        {
+            PhysicalChildren = Tracking.GetPhysicalRegionsForVirtual(Address, Size);
 
             foreach (PhysicalRegion child in PhysicalChildren)
             {
@@ -21,23 +38,29 @@ namespace ARMeilleure.Memory.Tracking
             }
         }
 
+        public void RecalculatePhysicalChildren()
+        {
+            ClearPhysicalChildren();
+            UpdatePhysicalChildren();
+        }
+
         public void Signal(bool write)
         {
             // Assumes the tracking lock has already been obtained.
 
-            Tracking.ProtectVirtualRegion(this, MemoryProtection.ReadAndWrite); // Remove our protection immedately.
+            Tracking.ProtectVirtualRegion(this, MemoryPermission.ReadAndWrite); // Remove our protection immedately.
             foreach (var handle in Handles)
             {
                 handle.Signal(write);
             }
         }
 
-        public MemoryProtection GetRequiredPermission()
+        public MemoryPermission GetRequiredPermission()
         {
             // Start with Read/Write, each handle can strip off permissions as necessary.
             // Assumes the tracking lock has already been obtained.
 
-            MemoryProtection result = MemoryProtection.ReadAndWrite;
+            MemoryPermission result = MemoryPermission.ReadAndWrite;
 
             foreach (var handle in Handles)
             {
@@ -59,16 +82,6 @@ namespace ARMeilleure.Memory.Tracking
                     child.UpdateProtection();
                 }
             }
-        }
-
-        public RegionHandle NewHandle()
-        {
-            // Assumes the tracking lock has already been obtained.
-            // Handles start as dirty and with no action, so protection does not need to be updated.
-
-            RegionHandle handle = new RegionHandle(this);
-            Handles.Add(handle);
-            return handle;
         }
 
         public void RemoveHandle(RegionHandle handle)
@@ -98,6 +111,28 @@ namespace ARMeilleure.Memory.Tracking
                     }
                 }
             }
+        }
+
+        public void AddChild(PhysicalRegion region)
+        {
+            PhysicalChildren.Add(region);
+        }
+
+        public override INonOverlappingRange Split(ulong splitAddress)
+        {
+            ClearPhysicalChildren();
+            VirtualRegion newRegion = new VirtualRegion(Tracking, splitAddress, EndAddress - splitAddress);
+            Size = splitAddress - Address;
+            UpdatePhysicalChildren();
+
+            // The new region inherits all of our parents.
+            newRegion.Handles = new List<RegionHandle>(Handles);
+            foreach (var parent in Handles)
+            {
+                parent.AddChild(newRegion);
+            }
+
+            return newRegion;
         }
     }
 }

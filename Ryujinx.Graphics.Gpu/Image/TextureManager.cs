@@ -64,6 +64,22 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             _modified = new HashSet<Texture>(new ReferenceEqualityComparer<Texture>());
             _modifiedLinear = new HashSet<Texture>(new ReferenceEqualityComparer<Texture>());
+
+            context.MemoryManager.MemoryUnmapped += VaUnmapped;
+        }
+
+        private void VaUnmapped(object sender, UnmapEventArgs e)
+        {
+            ulong address = _context.MemoryManager.Translate(e.Address);
+
+            Texture[] overlaps = new Texture[10];
+            int overlapsCount = _textures.FindOverlaps(address, e.Size, ref overlaps);
+
+            for (int i = 0; i < overlapsCount; i++)
+            {
+                _textures.Remove(overlaps[i]);
+                overlaps[i].MemoryUnmapped();
+            }
         }
 
         /// <summary>
@@ -618,7 +634,6 @@ namespace Ryujinx.Graphics.Gpu.Image
             if (!isSamplerTexture)
             {
                 _cache.Add(texture);
-                texture.Modified += CacheTextureModified;
                 texture.Disposed += CacheTextureDisposed;
             }
 

@@ -1,4 +1,4 @@
-using ARMeilleure.Memory.Tracking;
+using Ryujinx.Cpu.Tracking;
 using Ryujinx.Graphics.GAL;
 using System;
 
@@ -31,7 +31,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// </summary>
         public ulong EndAddress => Address + Size;
 
-        private MultiRegionHandle _memoryTracking;
+        private CpuMultiRegionHandle _memoryTracking;
 
         private readonly int[] _sequenceNumbers;
 

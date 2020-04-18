@@ -1,4 +1,4 @@
-using ARMeilleure.Memory.Tracking;
+using Ryujinx.Cpu.Tracking;
 using Ryujinx.Graphics.Gpu.Memory;
 using System;
 
@@ -34,7 +34,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public ulong Size { get; }
 
-        private MultiRegionHandle _memoryTracking;
+        private CpuMultiRegionHandle _memoryTracking;
 
         private readonly (ulong, ulong)[] _modifiedRanges;
 
