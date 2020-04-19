@@ -1,5 +1,3 @@
-#define TARGET_WINDOWS
-
 #ifdef TARGET_WINDOWS
 #include "pch.h"
 #include <Windows.h>
