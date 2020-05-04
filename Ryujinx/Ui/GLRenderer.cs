@@ -17,7 +17,7 @@ namespace Ryujinx.Ui
 {
     public class GlRenderer : GLWidget
     {
-        static GLRenderer()
+        static GlRenderer()
         {
             OpenTK.Graphics.GraphicsContext.ShareContexts = true;
         }
