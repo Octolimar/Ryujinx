@@ -12,11 +12,15 @@ namespace Ryujinx.Memory.Tracking
 
         public ulong Address { get; }
         public ulong Size { get; }
-        public ulong EndAddress => Address + Size;
+        public ulong EndAddress { get; }
 
         private Action _preAction; // Action to perform before a read or write. This will block the memory access.
         private List<VirtualRegion> _regions;
         private MemoryTracking _tracking;
+
+        public int CheckCount;
+        public int ReprotectCount;
+        public bool AlwaysDirty;
 
         internal MemoryPermission RequiredPermission => _preAction != null ? MemoryPermission.None : (Dirty ? MemoryPermission.ReadAndWrite : MemoryPermission.Read);
 
@@ -24,6 +28,8 @@ namespace Ryujinx.Memory.Tracking
         {
             Address = address;
             Size = size;
+            EndAddress = address + size;
+
             _tracking = tracking;
             _regions = tracking.GetVirtualRegionsForHandle(address, size);
             foreach (var region in _regions)

@@ -74,9 +74,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="size">Size of the region</param>
         /// <param name="granularity">Desired granularity of write tracking</param>
         /// <returns>The memory tracking handles</returns>
-        public CpuMultiRegionHandle BeginGranularTracking(ulong address, ulong size, ulong granularity)
+        public CpuMultiRegionHandle BeginGranularTracking(ulong address, ulong size, ulong granularity, bool initGranularity = false)
         {
-            return _cpuMemory.BeginGranularTracking(address, size, granularity);
+            CpuMultiRegionHandle handle = _cpuMemory.BeginGranularTracking(address, size, granularity);
+            if (initGranularity)
+            {
+                handle.InitMinimumGranularity(granularity);
+            }
+            return handle;
         }
     }
 }

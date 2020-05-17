@@ -115,13 +115,7 @@ namespace Ryujinx.Memory.Tracking
         {
             (address, size) = PageAlign(address, size);
 
-            List<RegionHandle> handles = new List<RegionHandle>();
-            for (; size > 0; address += granularity, size -= granularity)
-            {
-                handles.Add(BeginTracking(address, Math.Min(granularity, size)));
-            }
-
-            return new MultiRegionHandle(handles, granularity);
+            return new MultiRegionHandle(this, address, size, granularity);
         }
 
         public RegionHandle BeginTracking(ulong address, ulong size)

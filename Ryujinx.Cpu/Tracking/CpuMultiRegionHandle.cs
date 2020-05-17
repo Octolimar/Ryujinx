@@ -17,5 +17,6 @@ namespace Ryujinx.Cpu.Tracking
         public void Dispose() => _impl.Dispose();
         public void QueryModified(Action<ulong, ulong> modifiedAction) => _impl.QueryModified(modifiedAction);
         public void QueryModified(ulong address, ulong size, Action<ulong, ulong> modifiedAction) => _impl.QueryModified(address, size, modifiedAction);
+        public void InitMinimumGranularity(ulong granularity) => _impl.InitMinimumGranularity(granularity);
     }
 }

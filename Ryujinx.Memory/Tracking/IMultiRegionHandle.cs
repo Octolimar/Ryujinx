@@ -8,5 +8,6 @@ namespace Ryujinx.Memory.Tracking
 
         public void QueryModified(Action<ulong, ulong> modifiedAction);
         public void QueryModified(ulong address, ulong size, Action<ulong, ulong> modifiedAction);
+        public void InitMinimumGranularity(ulong granularity);
     }
 }
