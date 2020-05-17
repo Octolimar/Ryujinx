@@ -109,7 +109,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 int offset = (int)(mAddress - Address);
 
                 _context.Renderer.SetBufferData(Handle, offset, _context.PhysicalMemory.GetSpan(mAddress, (int)mSize));
-            }
+            });
         }
 
         /// <summary>
