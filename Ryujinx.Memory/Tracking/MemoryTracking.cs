@@ -45,7 +45,7 @@ namespace Ryujinx.Memory.Tracking
             _virtualRegions = new NonOverlappingRangeList<VirtualRegion>();
             _physicalRegions = new NonOverlappingRangeList<PhysicalRegion>();
 
-            _block.RegisterTrackingAction(PhysicalMemoryEvent);
+            // _block.RegisterTrackingAction(PhysicalMemoryEvent);
         }
 
         private (ulong address, ulong size) PageAlign(ulong address, ulong size)
@@ -227,7 +227,7 @@ namespace Ryujinx.Memory.Tracking
 
                 if (count == 0)
                 {
-                    _block.ReprotectMirror(address & ~(ulong)(_pageSize - 1), 4096, MemoryPermission.ReadAndWrite);
+                    _block.Reprotect(address & ~(ulong)(_pageSize - 1), 4096, MemoryPermission.ReadAndWrite);
                     return false; // We can't handle this - unprotect and return.
                 }
 
@@ -294,7 +294,7 @@ namespace Ryujinx.Memory.Tracking
         {
             if (EnablePhysicalProtection)
             {
-                _block.ReprotectMirror(region.Address, region.Size, permission);
+                _block.Reprotect(region.Address, region.Size, permission);
             }
         }
 

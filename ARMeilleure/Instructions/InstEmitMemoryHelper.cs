@@ -127,30 +127,26 @@ namespace ARMeilleure.Instructions
             Operand physAddr;
             Operand lblEnd = Label();
 
-            if (context.DirectMemory) 
-            {
-                if (address.Type == OperandType.I32) address = context.ZeroExtend32(OperandType.I64, address);
-                physAddr = context.Add(address, Const(context.Memory.VirtualBase));
-            } 
-            else 
-            {
-                Operand isUnalignedAddr = EmitAddressCheck(context, address, size);
+            // Address Translation.
 
-                Operand lblFastPath = Label();
-                Operand lblSlowPath = Label();
+            Operand isUnalignedAddr = EmitAddressCheck(context, address, size);
 
-                context.BranchIfFalse(lblFastPath, isUnalignedAddr);
+            Operand lblFastPath = Label();
+            Operand lblSlowPath = Label();
 
-                context.MarkLabel(lblSlowPath);
+            context.BranchIfFalse(lblFastPath, isUnalignedAddr);
 
-                EmitReadIntFallback(context, address, rt, size);
+            context.MarkLabel(lblSlowPath);
 
-                context.Branch(lblEnd);
+            EmitReadIntFallback(context, address, rt, size);
 
-                context.MarkLabel(lblFastPath);
+            context.Branch(lblEnd);
 
-                physAddr = EmitPtPointerLoad(context, address, lblSlowPath, false);
-            }
+            context.MarkLabel(lblFastPath);
+
+            physAddr = EmitPtPointerLoad(context, address, lblSlowPath, false);
+
+            // Address Translation End.
 
             Operand value = null;
 
@@ -178,30 +174,26 @@ namespace ARMeilleure.Instructions
             Operand physAddr;
             Operand lblEnd = Label();
 
-            if (context.DirectMemory) 
-            {
-                if (address.Type == OperandType.I32) address = context.ZeroExtend32(OperandType.I64, address);
-                physAddr = context.Add(address, Const(context.Memory.VirtualBase));
-            } 
-            else 
-            {
-                Operand isUnalignedAddr = EmitAddressCheck(context, address, size);
+            // Address Translation.
 
-                Operand lblFastPath = Label();
-                Operand lblSlowPath = Label();
+            Operand isUnalignedAddr = EmitAddressCheck(context, address, size);
 
-                context.BranchIfFalse(lblFastPath, isUnalignedAddr);
+            Operand lblFastPath = Label();
+            Operand lblSlowPath = Label();
 
-                context.MarkLabel(lblSlowPath);
+            context.BranchIfFalse(lblFastPath, isUnalignedAddr);
 
-                EmitReadVectorFallback(context, address, vector, rt, elem, size);
+            context.MarkLabel(lblSlowPath);
 
-                context.Branch(lblEnd);
+            EmitReadVectorFallback(context, address, vector, rt, elem, size);
 
-                context.MarkLabel(lblFastPath);
+            context.Branch(lblEnd);
 
-                physAddr = EmitPtPointerLoad(context, address, lblSlowPath, false);
-            }
+            context.MarkLabel(lblFastPath);
+
+            physAddr = EmitPtPointerLoad(context, address, lblSlowPath, false);
+
+            // Address Translation End.
 
             Operand value = null;
 
@@ -229,30 +221,26 @@ namespace ARMeilleure.Instructions
             Operand physAddr;
             Operand lblEnd = Label();
 
-            if (context.DirectMemory) 
-            {
-                if (address.Type == OperandType.I32) address = context.ZeroExtend32(OperandType.I64, address);
-                physAddr = context.Add(address, Const(context.Memory.VirtualBase));
-            } 
-            else 
-            {
-                Operand isUnalignedAddr = EmitAddressCheck(context, address, size);
+            // Address Translation.
 
-                Operand lblFastPath = Label();
-                Operand lblSlowPath = Label();
+            Operand isUnalignedAddr = EmitAddressCheck(context, address, size);
 
-                context.BranchIfFalse(lblFastPath, isUnalignedAddr);
+            Operand lblFastPath = Label();
+            Operand lblSlowPath = Label();
 
-                context.MarkLabel(lblSlowPath);
+            context.BranchIfFalse(lblFastPath, isUnalignedAddr);
 
-                EmitWriteIntFallback(context, address, rt, size);
+            context.MarkLabel(lblSlowPath);
 
-                context.Branch(lblEnd);
+            EmitWriteIntFallback(context, address, rt, size);
 
-                context.MarkLabel(lblFastPath);
+            context.Branch(lblEnd);
 
-                physAddr = EmitPtPointerLoad(context, address, lblSlowPath, true);
-            }
+            context.MarkLabel(lblFastPath);
+
+            physAddr = EmitPtPointerLoad(context, address, lblSlowPath, true);
+
+            // Address Translation End.
 
             Operand value = GetInt(context, rt);
 
@@ -282,30 +270,26 @@ namespace ARMeilleure.Instructions
             Operand physAddr;
             Operand lblEnd = Label();
 
-            if (context.DirectMemory) 
-            {
-                if (address.Type == OperandType.I32) address = context.ZeroExtend32(OperandType.I64, address);
-                physAddr = context.Add(address, Const(context.Memory.VirtualBase));
-            } 
-            else 
-            {
-                Operand isUnalignedAddr = EmitAddressCheck(context, address, size);
+            // Address Translation.
 
-                Operand lblFastPath = Label();
-                Operand lblSlowPath = Label();
+            Operand isUnalignedAddr = EmitAddressCheck(context, address, size);
 
-                context.BranchIfFalse(lblFastPath, isUnalignedAddr);
+            Operand lblFastPath = Label();
+            Operand lblSlowPath = Label();
 
-                context.MarkLabel(lblSlowPath);
+            context.BranchIfFalse(lblFastPath, isUnalignedAddr);
 
-                EmitWriteVectorFallback(context, address, rt, elem, size);
+            context.MarkLabel(lblSlowPath);
 
-                context.Branch(lblEnd);
+            EmitWriteVectorFallback(context, address, rt, elem, size);
 
-                context.MarkLabel(lblFastPath);
+            context.Branch(lblEnd);
 
-                physAddr = EmitPtPointerLoad(context, address, lblSlowPath, true);
-            }
+            context.MarkLabel(lblFastPath);
+
+            physAddr = EmitPtPointerLoad(context, address, lblSlowPath, true);
+
+            // Address Translation End.
 
             Operand value = GetVec(rt);
 
@@ -366,16 +350,10 @@ namespace ARMeilleure.Instructions
             }
             while (bit < context.Memory.AddressSpaceBits);
 
-            if (context.Memory.SoftwareMemoryProtection)
-            {
-                ulong protection = (write ? 3UL : 1UL) << 48;
-                context.BranchIfTrue(lblSlowPath, context.BitwiseAnd(pte, Const(protection)));
-                pte = context.BitwiseAnd(pte, Const(~(0xffffUL << 48))); // Ignore any software protection bits. (they are still used by c# memory access)
-            }
-            else
-            {
-                pte = context.BitwiseAnd(pte, Const(~(0xffffUL << 48))); // Ignore any software protection bits. (they are still used by c# memory access)
-            }
+            // Software memory protection, used for write tracking.
+            ulong protection = (write ? 3UL : 1UL) << 48;
+            context.BranchIfTrue(lblSlowPath, context.BitwiseAnd(pte, Const(protection)));
+            pte = context.BitwiseAnd(pte, Const(~(0xffffUL << 48))); // Ignore any software protection bits. (they are still used by c# memory access)
 
             Operand pageOffset = context.BitwiseAnd(address, Const(address.Type, PageMask));
 
@@ -384,7 +362,7 @@ namespace ARMeilleure.Instructions
                 pageOffset = context.ZeroExtend32(OperandType.I64, pageOffset);
             }
 
-            return (context.Memory.SoftwareMemoryProtection) ? context.Add(pte, pageOffset) : context.Add(pte, context.Add(pageOffset, Const(context.Memory.WriteTrackOffset)));
+            return context.Add(pte, pageOffset);
         }
 
         private static void EmitReadIntFallback(ArmEmitterContext context, Operand address, int rt, int size)

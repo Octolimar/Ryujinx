@@ -1,10 +1,5 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <Target Name="PreBuild" BeforeTargets="PreBuildEvent">
-    <Exec Command="&quot;$(ProjectDir)..\Ryujinx.Memory.Native\Make.bat&quot;" Condition=" '$(OS)' == 'Windows_NT' " />
-    <Exec Command="&quot;$(ProjectDir)..\Ryujinx.Memory.Native\Make.sh&quot;" Condition=" '$(OS)' != 'Windows_NT' " />
-  </Target>
-
   <PropertyGroup>
     <TargetFramework>netcoreapp3.1</TargetFramework>
   </PropertyGroup>
@@ -18,18 +13,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\Ryujinx.Memory.Native\bin\Release\Ryujinx.Memory.Native.dll" Link="Ryujinx.Memory.Native.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Mono.Posix.NETStandard" Version="1.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
-    <ProjectReference Include="..\Ryujinx.Memory.Native\Ryujinx.Memory.Native.vcxproj" />
   </ItemGroup>
 
 </Project>

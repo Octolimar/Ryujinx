@@ -46,8 +46,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ryujinx.Memory.Tests", "Ryu
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ryujinx.Cpu", "Ryujinx.Cpu\Ryujinx.Cpu.csproj", "{3DF35E3D-D844-4399-A9A1-A9E923264C17}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Ryujinx.Memory.Native", "Ryujinx.Memory.Native\Ryujinx.Memory.Native.vcxproj", "{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -520,28 +518,6 @@ Global
 		{3DF35E3D-D844-4399-A9A1-A9E923264C17}.Release|x64.Build.0 = Release|Any CPU
 		{3DF35E3D-D844-4399-A9A1-A9E923264C17}.Release|x86.ActiveCfg = Release|Any CPU
 		{3DF35E3D-D844-4399-A9A1-A9E923264C17}.Release|x86.Build.0 = Release|Any CPU
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Debug|Any CPU.ActiveCfg = Debug|Win32
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Debug|x64.ActiveCfg = Debug|x64
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Debug|x64.Build.0 = Debug|x64
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Debug|x86.ActiveCfg = Debug|Win32
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Debug|x86.Build.0 = Debug|Win32
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Profile Debug|Any CPU.ActiveCfg = Release|x64
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Profile Debug|Any CPU.Build.0 = Release|x64
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Profile Debug|x64.ActiveCfg = Debug|x64
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Profile Debug|x64.Build.0 = Debug|x64
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Profile Debug|x86.ActiveCfg = Debug|Win32
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Profile Debug|x86.Build.0 = Debug|Win32
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Profile Release|Any CPU.ActiveCfg = Release|x64
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Profile Release|Any CPU.Build.0 = Release|x64
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Profile Release|x64.ActiveCfg = Release|x64
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Profile Release|x64.Build.0 = Release|x64
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Profile Release|x86.ActiveCfg = Release|Win32
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Profile Release|x86.Build.0 = Release|Win32
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Release|Any CPU.ActiveCfg = Release|x64
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Release|x64.ActiveCfg = Release|x64
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Release|x64.Build.0 = Release|x64
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Release|x86.ActiveCfg = Release|Win32
-		{5BF4BFDE-9B9C-4B71-985E-92C44750CEC7}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

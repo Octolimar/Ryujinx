@@ -7,8 +7,6 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Ryujinx.Memory.Tracking;
 using Ryujinx.Cpu.Tracking;
-using Ryujinx.Memory.Virtual;
-using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Cpu
 {
@@ -32,12 +30,7 @@ namespace Ryujinx.Cpu
 
         public IntPtr PageTablePointer => _pageTable.Pointer;
 
-        public ulong WriteTrackOffset => (ulong)_backingMemory.MirrorPointer - (ulong)_backingMemory.Pointer;
-        public ulong VirtualBase => HostVirtual == null ? 0 : (ulong)HostVirtual.Pointer;
-        public bool SoftwareMemoryProtection { get; private set; }
-
         public MemoryTracking Tracking { get; }
-        public VirtualMemoryBlock HostVirtual { get; }
 
         /// <summary>
         /// Creates a new instance of the memory manager.
@@ -46,7 +39,6 @@ namespace Ryujinx.Cpu
         /// <param name="addressSpaceSize">Size of the address space</param>
         public MemoryManager(MemoryBlock backingMemory, ulong addressSpaceSize)
         {
-            bool softwarePageTableRequired = !MemoryManagement.GetVirtualSupportInfo().NoFallback;
             ulong asSize = PageSize;
             int asBits = PageBits;
 
@@ -61,19 +53,9 @@ namespace Ryujinx.Cpu
             _backingMemory = backingMemory;
 
             _pageTable = new MemoryBlock((asSize / PageSize) * PteSize);
-            SoftwareMemoryProtection = true;
 
             Tracking = new MemoryTracking(this, backingMemory, PageSize);
-            Tracking.EnablePhysicalProtection = softwarePageTableRequired && !SoftwareMemoryProtection;
-            try
-            {
-                HostVirtual = new VirtualMemoryBlock(backingMemory, asSize, PageSize);
-                HostVirtual.RegisterTrackingAction(Tracking.VirtualMemoryEventTracking);
-            } 
-            catch (PlatformNotSupportedException)
-            {
-                Logger.PrintInfo(LogClass.Cpu, "Platform does not support host virtual memory, using software page tables.");
-            }
+            Tracking.EnablePhysicalProtection = false; // Disabled for now, as protection is done in software.
         }
 
         /// <summary>
@@ -98,7 +80,6 @@ namespace Ryujinx.Cpu
                 pa += PageSize;
                 remainingSize -= PageSize;
             }
-            HostVirtual?.Map(oVa, oPa, size);
             Tracking.Map(oVa, oPa, size);
         }
 
@@ -118,7 +99,6 @@ namespace Ryujinx.Cpu
                 va += PageSize;
                 remainingSize -= PageSize;
             }
-            HostVirtual?.Unmap(oVa, size);
             Tracking.Unmap(oVa, size);
         }
 
@@ -438,8 +418,6 @@ namespace Ryujinx.Cpu
         /// <param name="protection">Memory protection to set</param>
         public void Reprotect(ulong va, ulong size, MemoryPermission protection)
         {
-            HostVirtual?.Reprotect(va, size, protection);
-
             // Protection is inverted on software pages, since the default value is 0.
             protection = (~protection) & MemoryPermission.ReadAndWrite;
 

@@ -55,28 +55,9 @@ namespace Ryujinx.Memory
         [DllImport("kernel32.dll")]
         private static extern bool VirtualFree(IntPtr lpAddress, IntPtr dwSize, AllocationType dwFreeType);
 
-        [DllImport("kernel32.dll")]
-        private static extern IntPtr CreateFileMappingW(IntPtr hFile, IntPtr lpFileMappingAttributes, MemoryProtection flProtect, uint dwMaximumSizeHigh, uint dwMaximumSizeLow, IntPtr lpName);
-
-        [DllImport("kernel32.dll")]
-        private static extern IntPtr MapViewOfFile(IntPtr handle, int dwDesiredAccess, uint dwFileOffsetHigh, uint dwFileOffsetLow, IntPtr dwSize);
-
         public static IntPtr Allocate(IntPtr size)
         {
             return AllocateInternal(size, AllocationType.Reserve | AllocationType.Commit);
-        }
-
-        public static IntPtr[] AllocateViews(IntPtr size, int views)
-        {
-            ulong sizeInt = (ulong)size;
-            IntPtr file = CreateFileMappingW(new IntPtr(-1), IntPtr.Zero, MemoryProtection.ReadWrite, (uint)(sizeInt >> 32), (uint)sizeInt, IntPtr.Zero);
-
-            IntPtr[] results = new IntPtr[views];
-            for (int i = 0; i < views; i++)
-            {
-                results[i] = MapViewOfFile(file, 0xf001f, 0, 0, size);
-            }
-            return results;
         }
 
         public static IntPtr Reserve(IntPtr size)
