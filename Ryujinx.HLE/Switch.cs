@@ -49,7 +49,7 @@ namespace Ryujinx.HLE
 
             AudioOut = audioOut;
 
-            Memory = new MemoryBlock(1UL << 32, MemoryAllocationFlags.None);
+            Memory = new MemoryBlock(1UL << 32);
 
             Gpu = new GpuContext(renderer);
 

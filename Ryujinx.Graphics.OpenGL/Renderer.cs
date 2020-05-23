@@ -120,7 +120,7 @@ namespace Ryujinx.Graphics.OpenGL
 
         public void BackgroundContextAction(Action action)
         {
-            OpenTK.Graphics.GraphicsContext backgroundContext = _window.BackgroundContext;
+            GraphicsContext backgroundContext = _window.BackgroundContext;
             lock (backgroundContext)
             {
                 if (GraphicsContext.CurrentContext != null)
