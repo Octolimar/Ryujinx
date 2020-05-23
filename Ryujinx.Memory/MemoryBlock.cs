@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Ryujinx.Memory
@@ -10,8 +9,6 @@ namespace Ryujinx.Memory
     /// </summary>
     public sealed class MemoryBlock : IDisposable
     {
-        public delegate bool MemoryTrackingAction(ulong address, bool write);
-
         private IntPtr _pointer;
 
         /// <summary>

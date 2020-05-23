@@ -32,10 +32,7 @@ namespace Ryujinx.Memory
             ExecuteWriteCopy = 0x80,
             GuardModifierflag = 0x100,
             NoCacheModifierflag = 0x200,
-            WriteCombineModifierflag = 0x400,
-
-            Reserve = 0x4000000,
-            Commit = 0x8000000
+            WriteCombineModifierflag = 0x400
         }
 
         [DllImport("kernel32.dll")]
