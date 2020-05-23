@@ -9,6 +9,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
     /// </summary>
     class Buffer : IRange, IDisposable
     {
+        private static ulong GranularBufferThreshold = 4096;
+
         private readonly GpuContext _context;
 
         /// <summary>
@@ -31,9 +33,11 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// </summary>
         public ulong EndAddress => Address + Size;
 
-        private CpuMultiRegionHandle _memoryTracking;
+        private CpuSmartMultiRegionHandle _memoryTrackingGranular;
+        private CpuRegionHandle _memoryTracking;
+        private int _sequenceNumber;
 
-        private readonly int[] _sequenceNumbers;
+        private bool _useGranular;
 
         /// <summary>
         /// Creates a new instance of the buffer.
@@ -49,9 +53,16 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             Handle = context.Renderer.CreateBuffer((int)size);
 
-            _memoryTracking = context.PhysicalMemory.BeginGranularTracking(address, size, 4096);
+            _useGranular = size > GranularBufferThreshold;
 
-            _sequenceNumbers = new int[size / MemoryManager.PageSize];
+            if (_useGranular)
+            {
+                _memoryTrackingGranular = context.PhysicalMemory.BeginSmartGranularTracking(address, size, 4096);
+            }
+            else
+            {
+                _memoryTracking = context.PhysicalMemory.BeginTracking(address, size);
+            }
         }
 
         /// <summary>
@@ -92,24 +103,36 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="size">Size in bytes of the range to synchronize</param>
         public void SynchronizeMemory(ulong address, ulong size)
         {
-            _memoryTracking.QueryModified(address, size, (ulong mAddress, ulong mSize) =>
+            if (_useGranular)
             {
-                if (mAddress < Address)
+                _memoryTrackingGranular.QueryModified(address, size, (ulong mAddress, ulong mSize) =>
                 {
-                    mAddress = Address;
-                }
+                    if (mAddress < Address)
+                    {
+                        mAddress = Address;
+                    }
 
-                ulong maxSize = Address + Size - mAddress;
+                    ulong maxSize = Address + Size - mAddress;
 
-                if (mSize > maxSize)
+                    if (mSize > maxSize)
+                    {
+                        mSize = maxSize;
+                    }
+
+                    int offset = (int)(mAddress - Address);
+
+                    _context.Renderer.SetBufferData(Handle, offset, _context.PhysicalMemory.GetSpan(mAddress, (int)mSize));
+                }, _context.SequenceNumber);
+            }
+            else
+            {
+                if (_memoryTracking.Dirty && _context.SequenceNumber != _sequenceNumber)
                 {
-                    mSize = maxSize;
+                    _memoryTracking.Reprotect();
+                    _context.Renderer.SetBufferData(Handle, 0, _context.PhysicalMemory.GetSpan(Address, (int)Size));
+                    _sequenceNumber = _context.SequenceNumber;
                 }
-
-                int offset = (int)(mAddress - Address);
-
-                _context.Renderer.SetBufferData(Handle, offset, _context.PhysicalMemory.GetSpan(mAddress, (int)mSize));
-            });
+            }
         }
 
         /// <summary>
@@ -144,7 +167,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             _context.Renderer.DeleteBuffer(Handle);
 
-            _memoryTracking.Dispose();
+            _memoryTrackingGranular?.Dispose();
+            _memoryTracking?.Dispose();
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using OpenTK.Graphics.OpenGL;
+﻿using OpenTK.Graphics;
+using OpenTK.Graphics.OpenGL;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.OpenGL.Image;
@@ -122,13 +123,24 @@ namespace Ryujinx.Graphics.OpenGL
             OpenTK.Graphics.GraphicsContext backgroundContext = _window.BackgroundContext;
             lock (backgroundContext)
             {
-                if (OpenTK.Graphics.GraphicsContext.CurrentContext != null)
+                if (GraphicsContext.CurrentContext != null)
                 {
                     action(); // We have a context already - use that (assuming it is the main one).
                 }
                 else
                 {
-                    backgroundContext.MakeCurrent(_window.BackgroundWindow);
+                    while (true)
+                    {
+                        try
+                        {
+                            backgroundContext.MakeCurrent(_window.BackgroundWindow);
+                            break;
+                        } 
+                        catch (GraphicsContextException)
+                        {
+                            // Continue until we can get the background context.
+                        }
+                    }
                     action();
                     backgroundContext.MakeCurrent(null);
                 }

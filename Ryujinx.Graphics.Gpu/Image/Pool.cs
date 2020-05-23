@@ -34,9 +34,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public ulong Size { get; }
 
-        private CpuMultiRegionHandle _memoryTracking;
-
-        private readonly (ulong, ulong)[] _modifiedRanges;
+        private readonly CpuMultiRegionHandle _memoryTracking;
 
         public Pool(GpuContext context, ulong address, int maximumId)
         {
@@ -52,8 +50,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             Address = address;
             Size    = size;
 
-            _memoryTracking = context.PhysicalMemory.BeginGranularTracking(address, size, 4096, true);
-            _modifiedRanges = new (ulong, ulong)[size / PhysicalMemory.PageSize];
+            _memoryTracking = context.PhysicalMemory.BeginGranularTracking(address, size, 4096);
         }
 
         /// <summary>

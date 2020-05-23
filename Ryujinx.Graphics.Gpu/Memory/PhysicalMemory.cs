@@ -68,20 +68,27 @@ namespace Ryujinx.Graphics.Gpu.Memory
         }
 
         /// <summary>
-        /// Obtains memory tracking handles for the given virtual region, with a specified granularity. This should be disposed when finished with.
+        /// Obtains a memory tracking handle for the given virtual region, with a specified granularity. This should be disposed when finished with.
         /// </summary>
         /// <param name="address">CPU virtual address of the region</param>
         /// <param name="size">Size of the region</param>
         /// <param name="granularity">Desired granularity of write tracking</param>
-        /// <returns>The memory tracking handles</returns>
-        public CpuMultiRegionHandle BeginGranularTracking(ulong address, ulong size, ulong granularity, bool initGranularity = false)
+        /// <returns>The memory tracking handle</returns>
+        public CpuMultiRegionHandle BeginGranularTracking(ulong address, ulong size, ulong granularity)
         {
-            CpuMultiRegionHandle handle = _cpuMemory.BeginGranularTracking(address, size, granularity);
-            if (initGranularity)
-            {
-                handle.InitMinimumGranularity(granularity);
-            }
-            return handle;
+            return _cpuMemory.BeginGranularTracking(address, size, granularity);
+        }
+
+        /// <summary>
+        /// Obtains a smart memory tracking handle for the given virtual region, with a specified granularity. This should be disposed when finished with.
+        /// </summary>
+        /// <param name="address">CPU virtual address of the region</param>
+        /// <param name="size">Size of the region</param>
+        /// <param name="granularity">Desired granularity of write tracking</param>
+        /// <returns>The memory tracking handle</returns>
+        public CpuSmartMultiRegionHandle BeginSmartGranularTracking(ulong address, ulong size, ulong granularity)
+        {
+            return _cpuMemory.BeginSmartGranularTracking(address, size, granularity);
         }
     }
 }

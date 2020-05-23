@@ -5,25 +5,34 @@ using System.Threading;
 
 namespace Ryujinx.Memory.Tracking
 {
+    /// <summary>
+    /// A tracking handle for a given region of virtual memory. The Dirty flag is updated whenever any changes are made,
+    /// and an action can be performed when the region is read to or written from.
+    /// </summary>
     public class RegionHandle : IRegionHandle, IRange
     {
         public bool Dirty { get; private set; } = true;
-        public MultiRegionHandle Parent { get; internal set; }
 
         public ulong Address { get; }
         public ulong Size { get; }
         public ulong EndAddress { get; }
 
-        private Action _preAction; // Action to perform before a read or write. This will block the memory access.
-        private List<VirtualRegion> _regions;
-        private MemoryTracking _tracking;
+        internal IMultiRegionHandle Parent { get; set; }
+        internal int SequenceNumber { get; set; }
 
-        public int CheckCount;
-        public int ReprotectCount;
-        public bool AlwaysDirty;
+        private Action _preAction; // Action to perform before a read or write. This will block the memory access.
+        private readonly List<VirtualRegion> _regions;
+        private readonly MemoryTracking _tracking;
 
         internal MemoryPermission RequiredPermission => _preAction != null ? MemoryPermission.None : (Dirty ? MemoryPermission.ReadAndWrite : MemoryPermission.Read);
 
+        /// <summary>
+        /// Create a new region handle. The handle is registered with the given tracking object,
+        /// and will be notified of any changes to the specified region.
+        /// </summary>
+        /// <param name="tracking">Tracking object for the target memory block</param>
+        /// <param name="address">Virtual address of the region to track</param>
+        /// <param name="size">Size of the region to track</param>
         internal RegionHandle(MemoryTracking tracking, ulong address, ulong size)
         {
             Address = address;
@@ -38,6 +47,10 @@ namespace Ryujinx.Memory.Tracking
             }
         }
 
+        /// <summary>
+        /// Signal that a memory action occurred within this handle's virtual regions.
+        /// </summary>
+        /// <param name="write">Whether the region was written to or read</param>
         internal void Signal(bool write)
         {
             Action action = Interlocked.Exchange(ref _preAction, null);
@@ -50,6 +63,9 @@ namespace Ryujinx.Memory.Tracking
             }
         }
 
+        /// <summary>
+        /// Consume the dirty flag for this handle, and reprotect so it can be set on the next write.
+        /// </summary>
         public void Reprotect()
         {
             Dirty = false;
@@ -62,6 +78,11 @@ namespace Ryujinx.Memory.Tracking
             }
         }
 
+        /// <summary>
+        /// Register an action to perform when the tracked region is read or written.
+        /// The action is automatically removed after it runs.
+        /// </summary>
+        /// <param name="action">Action to call on read or write</param>
         public void RegisterAction(Action action)
         {
             Action lastAction = Interlocked.Exchange(ref _preAction, action);
@@ -77,16 +98,29 @@ namespace Ryujinx.Memory.Tracking
             }
         }
 
+        /// <summary>
+        /// Add a child virtual region to this handle.
+        /// </summary>
+        /// <param name="region">Virtual region to add as a child</param>
         internal void AddChild(VirtualRegion region)
         {
             _regions.Add(region);
         }
 
+        /// <summary>
+        /// Check if this region overlaps with another.
+        /// </summary>
+        /// <param name="address">Base address</param>
+        /// <param name="size">Size of the region</param>
+        /// <returns>True if overlapping, false otherwise</returns>
         public bool OverlapsWith(ulong address, ulong size)
         {
             return Address < address + size && address < EndAddress;
         }
 
+        /// <summary>
+        /// Dispose the handle. Within the tracking lock, this removes references from virtual and physical regions.
+        /// </summary>
         public void Dispose()
         {
             lock (_tracking.TrackingLock)

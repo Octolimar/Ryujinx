@@ -7,6 +7,8 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Ryujinx.Memory.Tracking;
 using Ryujinx.Cpu.Tracking;
+using Ryujinx.Memory.Virtual;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Cpu
 {
@@ -31,8 +33,11 @@ namespace Ryujinx.Cpu
         public IntPtr PageTablePointer => _pageTable.Pointer;
 
         public ulong WriteTrackOffset => (ulong)_backingMemory.MirrorPointer - (ulong)_backingMemory.Pointer;
+        public ulong VirtualBase => HostVirtual == null ? 0 : (ulong)HostVirtual.Pointer;
+        public bool SoftwareMemoryProtection { get; private set; }
 
         public MemoryTracking Tracking { get; }
+        public VirtualMemoryBlock HostVirtual { get; }
 
         /// <summary>
         /// Creates a new instance of the memory manager.
@@ -41,6 +46,7 @@ namespace Ryujinx.Cpu
         /// <param name="addressSpaceSize">Size of the address space</param>
         public MemoryManager(MemoryBlock backingMemory, ulong addressSpaceSize)
         {
+            bool softwarePageTableRequired = !MemoryManagement.GetVirtualSupportInfo().NoFallback;
             ulong asSize = PageSize;
             int asBits = PageBits;
 
@@ -55,8 +61,19 @@ namespace Ryujinx.Cpu
             _backingMemory = backingMemory;
 
             _pageTable = new MemoryBlock((asSize / PageSize) * PteSize);
+            SoftwareMemoryProtection = true;
 
             Tracking = new MemoryTracking(this, backingMemory, PageSize);
+            Tracking.EnablePhysicalProtection = softwarePageTableRequired && !SoftwareMemoryProtection;
+            try
+            {
+                HostVirtual = new VirtualMemoryBlock(backingMemory, asSize, PageSize);
+                HostVirtual.RegisterTrackingAction(Tracking.VirtualMemoryEventTracking);
+            } 
+            catch (PlatformNotSupportedException)
+            {
+                Logger.PrintInfo(LogClass.Cpu, "Platform does not support host virtual memory, using software page tables.");
+            }
         }
 
         /// <summary>
@@ -70,15 +87,19 @@ namespace Ryujinx.Cpu
         /// <param name="size">Size to be mapped</param>
         public void Map(ulong va, ulong pa, ulong size)
         {
-            while (size != 0)
+            ulong remainingSize = size;
+            ulong oVa = va;
+            ulong oPa = pa;
+            while (remainingSize != 0)
             {
                 _pageTable.Write((va / PageSize) * PteSize, PaToPte(pa));
 
                 va += PageSize;
                 pa += PageSize;
-                size -= PageSize;
+                remainingSize -= PageSize;
             }
-            Tracking.Map(va, pa, size);
+            HostVirtual?.Map(oVa, oPa, size);
+            Tracking.Map(oVa, oPa, size);
         }
 
         /// <summary>
@@ -88,14 +109,17 @@ namespace Ryujinx.Cpu
         /// <param name="size">Size of the range to be unmapped</param>
         public void Unmap(ulong va, ulong size)
         {
-            while (size != 0)
+            ulong remainingSize = size;
+            ulong oVa = va;
+            while (remainingSize != 0)
             {
                 _pageTable.Write((va / PageSize) * PteSize, 0UL);
 
                 va += PageSize;
-                size -= PageSize;
+                remainingSize -= PageSize;
             }
-            Tracking.Unmap(va, size);
+            HostVirtual?.Unmap(oVa, size);
+            Tracking.Unmap(oVa, size);
         }
 
         /// <summary>
@@ -106,6 +130,18 @@ namespace Ryujinx.Cpu
         /// <returns>The data</returns>
         public T Read<T>(ulong va) where T : unmanaged
         {
+            return MemoryMarshal.Cast<byte, T>(GetSpan(va, Unsafe.SizeOf<T>()))[0];
+        }
+
+        /// <summary>
+        /// Reads data from CPU mapped memory, with read tracking
+        /// </summary>
+        /// <typeparam name="T">Type of the data being read</typeparam>
+        /// <param name="va">Virtual address of the data in memory</param>
+        /// <returns>The data</returns>
+        public T ReadTracked<T>(ulong va) where T : unmanaged
+        {
+            MarkRegionAsModified(va, (ulong)Unsafe.SizeOf<T>(), false);
             return MemoryMarshal.Cast<byte, T>(GetSpan(va, Unsafe.SizeOf<T>()))[0];
         }
 
@@ -269,6 +305,13 @@ namespace Ryujinx.Cpu
             return true;
         }
 
+        /// <summary>
+        /// Gets the physical regions that make up the given virtual address region.
+        /// If any part of the virtual region is unmapped, null is returned.
+        /// </summary>
+        /// <param name="va">Virtual address of the range</param>
+        /// <param name="size">Size of the range</param>
+        /// <returns>Array of physical regions</returns>
         public (ulong address, ulong size)[] GetPhysicalRegions(ulong va, ulong size)
         {
             if (!ValidateAddress(va))
@@ -387,8 +430,16 @@ namespace Ryujinx.Cpu
             return PteToPa(_pageTable.Read<ulong>((va / PageSize) * PteSize) & ~(0xffffUL << 48)) + (va & PageMask);
         }
 
+        /// <summary>
+        /// Reprotect a region of virtual memory. Sets software protection bits.
+        /// </summary>
+        /// <param name="va">Virtual address base</param>
+        /// <param name="size">Size of the region to protect</param>
+        /// <param name="protection">Memory protection to set</param>
         public void Reprotect(ulong va, ulong size, MemoryPermission protection)
         {
+            HostVirtual?.Reprotect(va, size, protection);
+
             // Protection is inverted on software pages, since the default value is 0.
             protection = (~protection) & MemoryPermission.ReadAndWrite;
 
@@ -423,15 +474,27 @@ namespace Ryujinx.Cpu
         }
 
         /// <summary>
-        /// Obtains memory tracking handles for the given virtual region, with a specified granularity. This should be disposed when finished with.
+        /// Obtains a memory tracking handle for the given virtual region, with a specified granularity. This should be disposed when finished with.
         /// </summary>
         /// <param name="address">CPU virtual address of the region</param>
         /// <param name="size">Size of the region</param>
         /// <param name="granularity">Desired granularity of write tracking</param>
-        /// <returns>The memory tracking handles</returns>
+        /// <returns>The memory tracking handle</returns>
         public CpuMultiRegionHandle BeginGranularTracking(ulong address, ulong size, ulong granularity)
         {
             return new CpuMultiRegionHandle(Tracking.BeginGranularTracking(address, size, granularity));
+        }
+
+        /// <summary>
+        /// Obtains a smart memory tracking handle for the given virtual region, with a specified granularity. This should be disposed when finished with.
+        /// </summary>
+        /// <param name="address">CPU virtual address of the region</param>
+        /// <param name="size">Size of the region</param>
+        /// <param name="granularity">Desired granularity of write tracking</param>
+        /// <returns>The memory tracking handle</returns>
+        public CpuSmartMultiRegionHandle BeginSmartGranularTracking(ulong address, ulong size, ulong granularity)
+        {
+            return new CpuSmartMultiRegionHandle(Tracking.BeginSmartGranularTracking(address, size, granularity));
         }
 
         private void MarkRegionAsModified(ulong va, ulong size, bool write)

@@ -5,7 +5,7 @@ namespace Ryujinx.Cpu.Tracking
 {
     public class CpuRegionHandle : IRegionHandle
     {
-        private RegionHandle _impl;
+        private readonly RegionHandle _impl;
 
         public bool Dirty => _impl.Dirty;
         public ulong Address => _impl.Address;

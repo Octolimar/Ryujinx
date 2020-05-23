@@ -15,10 +15,8 @@ namespace Ryujinx.Memory.Tracking
             Protection = MemoryPermission.ReadAndWrite;
         }
 
-        public void Signal(bool write)
+        public override void Signal(bool write)
         {
-            // Assumes the tracking lock has already been obtained.
-
             Protection = MemoryPermission.ReadAndWrite;
             Tracking.ProtectPhysicalRegion(this, MemoryPermission.ReadAndWrite); // Remove our protection immedately.
             foreach (var parent in VirtualParents)
@@ -27,6 +25,9 @@ namespace Ryujinx.Memory.Tracking
             }
         }
 
+        /// <summary>
+        /// Update the protection of this region, based on our parent's requested protection.
+        /// </summary>
         public void UpdateProtection()
         {
             // Re-evaluate protection, and commit to the block.
@@ -63,6 +64,11 @@ namespace Ryujinx.Memory.Tracking
             return newRegion;
         }
 
+        /// <summary>
+        /// Remove a parent virtual region from this physical region. Assumes that the tracking lock has been obtained.
+        /// </summary>
+        /// <param name="region">Region to remove</param>
+        /// <returns>True if there are no more parents and we should be removed, false otherwise.</returns>
         public bool RemoveParent(VirtualRegion region)
         {
             VirtualParents.Remove(region);
@@ -74,6 +80,9 @@ namespace Ryujinx.Memory.Tracking
             return false;
         }
 
+        /// <summary>
+        /// Deletes this physical region if there are no more virtual parents.
+        /// </summary>
         public void TryDelete()
         {
             if (VirtualParents.Count == 0)

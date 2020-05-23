@@ -19,6 +19,12 @@ namespace Ryujinx.Memory.Tracking
             return Address < address + size && address < EndAddress;
         }
 
+        /// <summary>
+        /// Signals to the handles that a memory event has occurred, and unprotects the region. Assumes that the tracking lock has been obtained.
+        /// </summary>
+        /// <param name="write">Whether the region was written to or read</param>
+        public abstract void Signal(bool write);
+
         public abstract INonOverlappingRange Split(ulong splitAddress);
     }
 }

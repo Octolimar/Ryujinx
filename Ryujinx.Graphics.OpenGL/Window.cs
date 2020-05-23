@@ -154,6 +154,7 @@ namespace Ryujinx.Graphics.OpenGL
         {
             BackgroundWindow = backgroundWindow;
             BackgroundContext = new GraphicsContext(GraphicsMode.Default, backgroundWindow, 3, 3, GraphicsContextFlags.ForwardCompatible);
+            BackgroundContext.MakeCurrent(null);
         }
 
         public void Dispose()

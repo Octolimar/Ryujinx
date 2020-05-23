@@ -6,55 +6,66 @@ namespace Ryujinx.Memory.Tracking
     class VirtualRegion : AbstractRegion
     {
         public List<RegionHandle> Handles = new List<RegionHandle>();
-        public List<PhysicalRegion> PhysicalChildren;
+        private List<PhysicalRegion> _physicalChildren;
 
-        public MemoryTracking Tracking;
+        private readonly MemoryTracking _tracking;
 
         public VirtualRegion(MemoryTracking tracking, ulong address, ulong size) : base(address, size)
         {
-            Tracking = tracking;
+            _tracking = tracking;
 
             UpdatePhysicalChildren();
         }
 
-        public void ClearPhysicalChildren()
+        public override void Signal(bool write)
         {
-            if (PhysicalChildren != null)
-            {
-                foreach (PhysicalRegion child in PhysicalChildren)
-                {
-                    child.RemoveParent(this);
-                }
-            }
-        }
-
-        public void UpdatePhysicalChildren()
-        {
-            PhysicalChildren = Tracking.GetPhysicalRegionsForVirtual(Address, Size);
-
-            foreach (PhysicalRegion child in PhysicalChildren)
-            {
-                child.VirtualParents.Add(this);
-            }
-        }
-
-        public void RecalculatePhysicalChildren()
-        {
-            ClearPhysicalChildren();
-            UpdatePhysicalChildren();
-        }
-
-        public void Signal(bool write)
-        {
-            // Assumes the tracking lock has already been obtained.
-
-            Tracking.ProtectVirtualRegion(this, MemoryPermission.ReadAndWrite); // Remove our protection immedately.
+            _tracking.ProtectVirtualRegion(this, MemoryPermission.ReadAndWrite); // Remove our protection immedately.
             foreach (var handle in Handles)
             {
                 handle.Signal(write);
             }
         }
 
+        /// <summary>
+        /// Clears all physical children of this region. Assumes that the tracking lock has been obtained.
+        /// </summary>
+        private void ClearPhysicalChildren()
+        {
+            if (_physicalChildren != null)
+            {
+                foreach (PhysicalRegion child in _physicalChildren)
+                {
+                    child.RemoveParent(this);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Updates the physical children of this region, assuming that they are clear and that the tracking lock has been obtained.
+        /// </summary>
+        private void UpdatePhysicalChildren()
+        {
+            _physicalChildren = _tracking.GetPhysicalRegionsForVirtual(Address, Size);
+
+            foreach (PhysicalRegion child in _physicalChildren)
+            {
+                child.VirtualParents.Add(this);
+            }
+        }
+
+        /// <summary>
+        /// Recalculates the physical children for this virtual region. Assumes that the tracking lock has been obtained.
+        /// </summary>
+        public void RecalculatePhysicalChildren()
+        {
+            ClearPhysicalChildren();
+            UpdatePhysicalChildren();
+        }
+
+        /// <summary>
+        /// Gets the strictest permission that the child handles demand. Assumes that the tracking lock has been obtained.
+        /// </summary>
+        /// <returns>Protection level that this region demands</returns>
         public MemoryPermission GetRequiredPermission()
         {
             // Start with Read/Write, each handle can strip off permissions as necessary.
@@ -70,30 +81,38 @@ namespace Ryujinx.Memory.Tracking
             return result;
         }
 
+        /// <summary>
+        /// Updates the protection for this virtual region, and all child physical regions.
+        /// </summary>
         public void UpdateProtection()
         {
             // Re-evaluate protection for all physical children.
 
-            Tracking.ProtectVirtualRegion(this, GetRequiredPermission());
-            lock (Tracking.TrackingLock)
+            _tracking.ProtectVirtualRegion(this, GetRequiredPermission());
+            lock (_tracking.TrackingLock)
             {
-                foreach (var child in PhysicalChildren)
+                foreach (var child in _physicalChildren)
                 {
                     child.UpdateProtection();
                 }
             }
         }
 
+        /// <summary>
+        /// Removes a handle from this virtual region. If there are no handles left, this virtual region is removed.
+        /// </summary>
+        /// <param name="handle">Handle to remove</param>
         public void RemoveHandle(RegionHandle handle)
         {
             bool removedRegions = false;
-            lock (Tracking.TrackingLock)
+            lock (_tracking.TrackingLock)
             {
                 Handles.Remove(handle);
+                UpdateProtection();
                 if (Handles.Count == 0)
                 {
-                    Tracking.RemoveVirtual(this);
-                    foreach (var child in PhysicalChildren)
+                    _tracking.RemoveVirtual(this);
+                    foreach (var child in _physicalChildren)
                     {
                         removedRegions |= child.RemoveParent(this);
                     }
@@ -103,9 +122,9 @@ namespace Ryujinx.Memory.Tracking
             if (removedRegions)
             {
                 // The first lock will unprotect any regions that have been removed. This second lock will remove them.
-                lock (Tracking.TrackingLock)
+                lock (_tracking.TrackingLock)
                 {
-                    foreach (var child in PhysicalChildren)
+                    foreach (var child in _physicalChildren)
                     {
                         child.TryDelete();
                     }
@@ -113,15 +132,19 @@ namespace Ryujinx.Memory.Tracking
             }
         }
 
+        /// <summary>
+        /// Add a child physical region to this virtual region. Assumes that the tracking lock has been obtained.
+        /// </summary>
+        /// <param name="region">Physical region to add as a child</param>
         public void AddChild(PhysicalRegion region)
         {
-            PhysicalChildren.Add(region);
+            _physicalChildren.Add(region);
         }
 
         public override INonOverlappingRange Split(ulong splitAddress)
         {
             ClearPhysicalChildren();
-            VirtualRegion newRegion = new VirtualRegion(Tracking, splitAddress, EndAddress - splitAddress);
+            VirtualRegion newRegion = new VirtualRegion(_tracking, splitAddress, EndAddress - splitAddress);
             Size = splitAddress - Address;
             UpdatePhysicalChildren();
 

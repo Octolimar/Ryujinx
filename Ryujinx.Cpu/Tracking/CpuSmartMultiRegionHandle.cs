@@ -3,13 +3,13 @@ using System;
 
 namespace Ryujinx.Cpu.Tracking
 {
-    public class CpuMultiRegionHandle : IMultiRegionHandle
+    public class CpuSmartMultiRegionHandle : IMultiRegionHandle
     {
-        private readonly MultiRegionHandle _impl;
+        private readonly SmartMultiRegionHandle _impl;
 
         public bool Dirty => _impl.Dirty;
 
-        internal CpuMultiRegionHandle(MultiRegionHandle impl)
+        internal CpuSmartMultiRegionHandle(SmartMultiRegionHandle impl)
         {
             _impl = impl;
         }
