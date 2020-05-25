@@ -147,9 +147,9 @@ namespace Ryujinx.Graphics.OpenGL
             }
         }
 
-        public void InitializeBackgroundContext(OpenTK.Platform.IWindowInfo backgroundWindow)
+        public void InitializeBackgroundContext(IGraphicsContext baseContext)
         {
-            _window.InitializeBackgroundContext(backgroundWindow);
+            _window.InitializeBackgroundContext(baseContext);
         }
 
         public void Dispose()

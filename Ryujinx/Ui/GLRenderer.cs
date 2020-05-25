@@ -307,7 +307,7 @@ namespace Ryujinx.Ui
         public void Render()
         {
             // First take exclusivity on the OpenGL context.
-            _renderer.InitializeBackgroundContext(WindowInfo);
+            _renderer.InitializeBackgroundContext(GraphicsContext);
             GraphicsContext.MakeCurrent(WindowInfo);
 
             _renderer.Initialize();
