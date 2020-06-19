@@ -28,14 +28,17 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="item">The item to be added</param>
         public void Add(T item)
         {
-            int index = BinarySearch(item.Address);
-
-            if (index < 0)
+            lock (_items)
             {
-                index = ~index;
-            }
+                int index = BinarySearch(item.Address);
 
-            _items.Insert(index, item);
+                if (index < 0)
+                {
+                    index = ~index;
+                }
+
+                _items.Insert(index, item);
+            }
         }
 
         /// <summary>
@@ -45,30 +48,33 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>True if the item was removed, or false if it was not found</returns>
         public bool Remove(T item)
         {
-            int index = BinarySearch(item.Address);
-
-            if (index >= 0)
+            lock (_items)
             {
-                while (index > 0 && _items[index - 1].Address == item.Address)
-                {
-                    index--;
-                }
+                int index = BinarySearch(item.Address);
 
-                while (index < _items.Count)
+                if (index >= 0)
                 {
-                    if (_items[index].Equals(item))
+                    while (index > 0 && _items[index - 1].Address == item.Address)
                     {
-                        _items.RemoveAt(index);
-
-                        return true;
+                        index--;
                     }
 
-                    if (_items[index].Address > item.Address)
+                    while (index < _items.Count)
                     {
-                        break;
-                    }
+                        if (_items[index].Equals(item))
+                        {
+                            _items.RemoveAt(index);
 
-                    index++;
+                            return true;
+                        }
+
+                        if (_items[index].Address > item.Address)
+                        {
+                            break;
+                        }
+
+                        index++;
+                    }
                 }
             }
 
@@ -193,25 +199,28 @@ namespace Ryujinx.Graphics.Gpu.Memory
             // when none of the items on the list overlaps with each other.
             int outputIndex = 0;
 
-            int index = BinarySearch(address, size);
-
-            if (index >= 0)
+            lock (_items)
             {
-                while (index > 0 && _items[index - 1].OverlapsWith(address, size))
-                {
-                    index--;
-                }
+                int index = BinarySearch(address, size);
 
-                do
+                if (index >= 0)
                 {
-                    if (outputIndex == output.Length)
+                    while (index > 0 && _items[index - 1].OverlapsWith(address, size))
                     {
-                        Array.Resize(ref output, outputIndex + ArrayGrowthSize);
+                        index--;
                     }
 
-                    output[outputIndex++] = _items[index++];
+                    do
+                    {
+                        if (outputIndex == output.Length)
+                        {
+                            Array.Resize(ref output, outputIndex + ArrayGrowthSize);
+                        }
+
+                        output[outputIndex++] = _items[index++];
+                    }
+                    while (index < _items.Count && _items[index].OverlapsWith(address, size));
                 }
-                while (index < _items.Count && _items[index].OverlapsWith(address, size));
             }
 
             return outputIndex;
@@ -225,32 +234,35 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>The number of matches found</returns>
         public int FindOverlaps(ulong address, ref T[] output)
         {
-            int index = BinarySearch(address);
-
             int outputIndex = 0;
 
-            if (index >= 0)
+            lock (_items)
             {
-                while (index > 0 && _items[index - 1].Address == address)
-                {
-                    index--;
-                }
+                int index = BinarySearch(address);
 
-                while (index < _items.Count)
+                if (index >= 0)
                 {
-                    T overlap = _items[index++];
-
-                    if (overlap.Address != address)
+                    while (index > 0 && _items[index - 1].Address == address)
                     {
-                        break;
+                        index--;
                     }
 
-                    if (outputIndex == output.Length)
+                    while (index < _items.Count)
                     {
-                        Array.Resize(ref output, outputIndex + ArrayGrowthSize);
-                    }
+                        T overlap = _items[index++];
 
-                    output[outputIndex++] = overlap;
+                        if (overlap.Address != address)
+                        {
+                            break;
+                        }
+
+                        if (outputIndex == output.Length)
+                        {
+                            Array.Resize(ref output, outputIndex + ArrayGrowthSize);
+                        }
+
+                        output[outputIndex++] = overlap;
+                    }
                 }
             }
 

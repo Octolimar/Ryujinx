@@ -1,3 +1,4 @@
+using Ryujinx.Cpu.Tracking;
 using Ryujinx.Graphics.Gpu.Memory;
 using System;
 
@@ -33,7 +34,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public ulong Size { get; }
 
-        private readonly (ulong, ulong)[] _modifiedRanges;
+        private readonly CpuMultiRegionHandle _memoryTracking;
 
         public Pool(GpuContext context, ulong address, int maximumId)
         {
@@ -49,7 +50,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             Address = address;
             Size    = size;
 
-            _modifiedRanges = new (ulong, ulong)[size / PhysicalMemory.PageSize];
+            _memoryTracking = context.PhysicalMemory.BeginGranularTracking(address, size, 4096);
         }
 
         /// <summary>
@@ -66,12 +67,8 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public void SynchronizeMemory()
         {
-            int count = Context.PhysicalMemory.QueryModified(Address, Size, ResourceName.TexturePool, _modifiedRanges);
-
-            for (int index = 0; index < count; index++)
+            _memoryTracking.QueryModified((ulong mAddress, ulong mSize) =>
             {
-                (ulong mAddress, ulong mSize) = _modifiedRanges[index];
-
                 if (mAddress < Address)
                 {
                     mAddress = Address;
@@ -85,7 +82,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 }
 
                 InvalidateRangeImpl(mAddress, mSize);
-            }
+            });
         }
 
         private void InvalidateRangeInternal(ulong offset, int size)
@@ -147,6 +144,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
                 Items = null;
             }
+            _memoryTracking.Dispose();
         }
     }
 }

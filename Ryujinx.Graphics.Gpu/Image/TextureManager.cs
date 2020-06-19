@@ -64,6 +64,22 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             _modified = new HashSet<Texture>(new ReferenceEqualityComparer<Texture>());
             _modifiedLinear = new HashSet<Texture>(new ReferenceEqualityComparer<Texture>());
+
+            context.MemoryManager.MemoryUnmapped += VaUnmapped;
+        }
+
+        private void VaUnmapped(object sender, UnmapEventArgs e)
+        {
+            ulong address = _context.MemoryManager.Translate(e.Address);
+
+            Texture[] overlaps = new Texture[10];
+            int overlapsCount = _textures.FindOverlaps(address, e.Size, ref overlaps);
+
+            for (int i = 0; i < overlapsCount; i++)
+            {
+                _textures.Remove(overlaps[i]);
+                overlaps[i].MemoryUnmapped();
+            }
         }
 
         /// <summary>
@@ -618,7 +634,6 @@ namespace Ryujinx.Graphics.Gpu.Image
             if (!isSamplerTexture)
             {
                 _cache.Add(texture);
-                texture.Modified += CacheTextureModified;
                 texture.Disposed += CacheTextureDisposed;
             }
 
@@ -770,6 +785,22 @@ namespace Ryujinx.Graphics.Gpu.Image
                 else if (formatInfo.Format.IsAstcSrgb())
                 {
                     formatInfo = new FormatInfo(Format.R8G8B8A8Srgb, 1, 1, 4);
+                }
+            }
+
+            if (info.Target == Target.TextureBuffer)
+            {
+                // We assume that the host does not support signed normalized format
+                // (as is the case with OpenGL), so we just use a unsigned format.
+                // The shader will need the appropriate conversion code to compensate.
+                switch (formatInfo.Format)
+                {
+                    case Format.R8Snorm:           formatInfo = new FormatInfo(Format.R8Sint,           1, 1, 1); break;
+                    case Format.R16Snorm:          formatInfo = new FormatInfo(Format.R16Sint,          1, 1, 2); break;
+                    case Format.R8G8Snorm:         formatInfo = new FormatInfo(Format.R8G8Sint,         1, 1, 2); break;
+                    case Format.R16G16Snorm:       formatInfo = new FormatInfo(Format.R16G16Sint,       1, 1, 4); break;
+                    case Format.R8G8B8A8Snorm:     formatInfo = new FormatInfo(Format.R8G8B8A8Sint,     1, 1, 4); break;
+                    case Format.R16G16B16A16Snorm: formatInfo = new FormatInfo(Format.R16G16B16A16Sint, 1, 1, 8); break;
                 }
             }
 

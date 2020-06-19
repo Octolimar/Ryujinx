@@ -1,4 +1,5 @@
-﻿using OpenTK.Graphics.OpenGL;
+﻿using OpenTK.Graphics;
+using OpenTK.Graphics.OpenGL;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.OpenGL.Image;
@@ -73,10 +74,12 @@ namespace Ryujinx.Graphics.OpenGL
         {
             return new Capabilities(
                 HwCapabilities.SupportsAstcCompression,
+                HwCapabilities.SupportsImageLoadFormatted,
                 HwCapabilities.SupportsNonConstantTextureOffset,
+                HwCapabilities.SupportsViewportSwizzle,
                 HwCapabilities.MaximumComputeSharedMemorySize,
-                HwCapabilities.StorageBufferOffsetAlignment,
-                HwCapabilities.MaxSupportedAnisotropy);
+                HwCapabilities.MaximumSupportedAnisotropy,
+                HwCapabilities.StorageBufferOffsetAlignment);
         }
 
         public void SetBufferData(BufferHandle buffer, int offset, ReadOnlySpan<byte> data)
@@ -113,6 +116,40 @@ namespace Ryujinx.Graphics.OpenGL
         public void ResetCounter(CounterType type)
         {
             _counters.QueueReset(type);
+        }
+
+        public void BackgroundContextAction(Action action)
+        {
+            GraphicsContext backgroundContext = _window.BackgroundContext;
+            lock (backgroundContext)
+            {
+                if (GraphicsContext.CurrentContext != null)
+                {
+                    action(); // We have a context already - use that (assuming it is the main one).
+                }
+                else
+                {
+                    while (true)
+                    {
+                        try
+                        {
+                            backgroundContext.MakeCurrent(_window.BackgroundWindow);
+                            break;
+                        } 
+                        catch (GraphicsContextException)
+                        {
+                            // Continue until we can get the background context.
+                        }
+                    }
+                    action();
+                    backgroundContext.MakeCurrent(null);
+                }
+            }
+        }
+
+        public void InitializeBackgroundContext(IGraphicsContext baseContext)
+        {
+            _window.InitializeBackgroundContext(baseContext);
         }
 
         public void Dispose()

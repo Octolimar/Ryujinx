@@ -178,27 +178,27 @@ namespace ARMeilleure.Instructions
         #region "Read"
         public static byte ReadByte(ulong address)
         {
-            return GetMemoryManager().Read<byte>(address);
+            return GetMemoryManager().ReadTracked<byte>(address);
         }
 
         public static ushort ReadUInt16(ulong address)
         {
-            return GetMemoryManager().Read<ushort>(address);
+            return GetMemoryManager().ReadTracked<ushort>(address);
         }
 
         public static uint ReadUInt32(ulong address)
         {
-            return GetMemoryManager().Read<uint>(address);
+            return GetMemoryManager().ReadTracked<uint>(address);
         }
 
         public static ulong ReadUInt64(ulong address)
         {
-            return GetMemoryManager().Read<ulong>(address);
+            return GetMemoryManager().ReadTracked<ulong>(address);
         }
 
         public static V128 ReadVector128(ulong address)
         {
-            return GetMemoryManager().Read<V128>(address);
+            return GetMemoryManager().ReadTracked<V128>(address);
         }
         #endregion
 
@@ -407,18 +407,22 @@ namespace ARMeilleure.Instructions
         public static ulong GetFunctionAddress(ulong address)
         {
             TranslatedFunction function = _context.Translator.GetOrTranslate(address, GetContext().ExecutionMode);
-            return (ulong)function.GetPointer().ToInt64();
+
+            return (ulong)function.FuncPtr.ToInt64();
         }
 
         public static ulong GetIndirectFunctionAddress(ulong address, ulong entryAddress)
         {
             TranslatedFunction function = _context.Translator.GetOrTranslate(address, GetContext().ExecutionMode);
-            ulong ptr = (ulong)function.GetPointer().ToInt64();
+
+            ulong ptr = (ulong)function.FuncPtr.ToInt64();
+
             if (function.HighCq)
             {
                 // Rewrite the host function address in the table to point to the highCq function.
                 Marshal.WriteInt64((IntPtr)entryAddress, 8, (long)ptr);
             }
+
             return ptr;
         }
 
