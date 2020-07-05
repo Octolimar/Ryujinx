@@ -1,3 +1,4 @@
+using ARMeilleure.Translation.PTC;
 using Gtk;
 using LibHac.Common;
 using LibHac.Ns;
@@ -166,13 +167,25 @@ namespace Ryujinx.Ui
             _tableStore.SetSortFunc(5, TimePlayedSort);
             _tableStore.SetSortFunc(6, LastPlayedSort);
             _tableStore.SetSortFunc(8, FileSizeSort);
-            _tableStore.SetSortColumnId(0, SortType.Descending);
+
+            int  columnId  = ConfigurationState.Instance.Ui.ColumnSort.SortColumnId;
+            bool ascending = ConfigurationState.Instance.Ui.ColumnSort.SortAscending;
+
+            _tableStore.SetSortColumnId(columnId, ascending ? SortType.Ascending : SortType.Descending);
 
             _gameTable.EnableSearch = true;
             _gameTable.SearchColumn = 2;
 
             UpdateColumns();
             UpdateGameTable();
+
+            ConfigurationState.Instance.Ui.GameDirs.Event += (sender, args) =>
+            {
+                if (args.OldValue != args.NewValue)
+                {
+                    UpdateGameTable();
+                }
+            };
 
             Task.Run(RefreshFirmwareLabel);
 
@@ -253,15 +266,45 @@ namespace Ryujinx.Ui
 
             foreach (TreeViewColumn column in _gameTable.Columns)
             {
-                if      (column.Title == "Fav"         && ConfigurationState.Instance.Ui.GuiColumns.FavColumn)        column.SortColumnId = 0;
-                else if (column.Title == "Application" && ConfigurationState.Instance.Ui.GuiColumns.AppColumn)        column.SortColumnId = 2;
-                else if (column.Title == "Developer"   && ConfigurationState.Instance.Ui.GuiColumns.DevColumn)        column.SortColumnId = 3;
-                else if (column.Title == "Version"     && ConfigurationState.Instance.Ui.GuiColumns.VersionColumn)    column.SortColumnId = 4;
-                else if (column.Title == "Time Played" && ConfigurationState.Instance.Ui.GuiColumns.TimePlayedColumn) column.SortColumnId = 5;
-                else if (column.Title == "Last Played" && ConfigurationState.Instance.Ui.GuiColumns.LastPlayedColumn) column.SortColumnId = 6;
-                else if (column.Title == "File Ext"    && ConfigurationState.Instance.Ui.GuiColumns.FileExtColumn)    column.SortColumnId = 7;
-                else if (column.Title == "File Size"   && ConfigurationState.Instance.Ui.GuiColumns.FileSizeColumn)   column.SortColumnId = 8;
-                else if (column.Title == "Path"        && ConfigurationState.Instance.Ui.GuiColumns.PathColumn)       column.SortColumnId = 9;
+                switch (column.Title)
+                {
+                    case "Fav":
+                        column.SortColumnId = 0;
+                        column.Clicked += Column_Clicked;
+                        break;
+                    case "Application":
+                        column.SortColumnId = 2;
+                        column.Clicked += Column_Clicked;
+                        break;
+                    case "Developer":
+                        column.SortColumnId = 3;
+                        column.Clicked += Column_Clicked;
+                        break;
+                    case "Version":
+                        column.SortColumnId = 4;
+                        column.Clicked += Column_Clicked;
+                        break;
+                    case "Time Played":
+                        column.SortColumnId = 5;
+                        column.Clicked += Column_Clicked;
+                        break;
+                    case "Last Played":
+                        column.SortColumnId = 6;
+                        column.Clicked += Column_Clicked;
+                        break;
+                    case "File Ext":
+                        column.SortColumnId = 7;
+                        column.Clicked += Column_Clicked;
+                        break;
+                    case "File Size":
+                        column.SortColumnId = 8;
+                        column.Clicked += Column_Clicked;
+                        break;
+                    case "Path":
+                        column.SortColumnId = 9;
+                        column.Clicked += Column_Clicked;
+                        break;
+                }
             }
         }
 
@@ -278,7 +321,7 @@ namespace Ryujinx.Ui
 
         internal static void UpdateGameTable()
         {
-            if (_updatingGameTable)
+            if (_updatingGameTable || _gameLoaded)
             {
                 return;
             }
@@ -470,6 +513,9 @@ namespace Ryujinx.Ui
 
             _glWidget.Start();
 
+            Ptc.Close();
+            PtcProfiler.Stop();
+
             device.Dispose();
             _deviceExitStatus.Set();
 
@@ -597,6 +643,10 @@ namespace Ryujinx.Ui
             Profile.FinishProfiling();
             DiscordIntegrationModule.Exit();
             Logger.Shutdown();
+
+            Ptc.Dispose();
+            PtcProfiler.Dispose();
+
             Application.Quit();
         }
 
@@ -605,24 +655,46 @@ namespace Ryujinx.Ui
             return new Renderer();
         }
 
-        /// <summary>
-        /// Picks an <see cref="IAalOutput"/> audio output renderer supported on this machine
-        /// </summary>
-        /// <returns>An <see cref="IAalOutput"/> supported by this machine</returns>
         private static IAalOutput InitializeAudioEngine()
         {
-            if (OpenALAudioOut.IsSupported)
+            if (ConfigurationState.Instance.System.AudioBackend.Value == AudioBackend.SoundIo)
             {
-                return new OpenALAudioOut();
+                if (SoundIoAudioOut.IsSupported)
+                {
+                    return new SoundIoAudioOut();
+                }
+                else
+                {
+                    Logger.PrintWarning(LogClass.Audio, "SoundIO is not supported, falling back to dummy audio out.");
+                }
             }
-            else if (SoundIoAudioOut.IsSupported)
+            else if (ConfigurationState.Instance.System.AudioBackend.Value == AudioBackend.OpenAl)
             {
-                return new SoundIoAudioOut();
+                if (OpenALAudioOut.IsSupported)
+                {
+                    return new OpenALAudioOut();
+                }
+                else
+                {
+                    Logger.PrintWarning(LogClass.Audio, "OpenAL is not supported, trying to fall back to SoundIO.");
+
+                    if (SoundIoAudioOut.IsSupported)
+                    {
+                        Logger.PrintWarning(LogClass.Audio, "Found SoundIO, changing configuration.");
+
+                        ConfigurationState.Instance.System.AudioBackend.Value = AudioBackend.SoundIo;
+                        SaveConfig();
+
+                        return new SoundIoAudioOut();
+                    }
+                    else
+                    {
+                        Logger.PrintWarning(LogClass.Audio, "SoundIO is not supported, falling back to dummy audio out.");
+                    }
+                }
             }
-            else
-            {
-                return new DummyAudioOut();
-            }
+
+            return new DummyAudioOut();
         }
 
         //Events
@@ -658,6 +730,11 @@ namespace Ryujinx.Ui
                 }
 
                 _progressBar.Value = barValue;
+
+                if (args.NumAppsLoaded == args.NumAppsFound) // Reset the vertical scrollbar to the top when titles finish loading
+                {
+                    _gameTableWindow.Vadjustment.Value = 0;
+                }
             });
         }
 
@@ -697,6 +774,16 @@ namespace Ryujinx.Ui
             {
                 appMetadata.Favorite = newToggleValue;
             });
+        }
+
+        private void Column_Clicked(object sender, EventArgs args)
+        {
+            TreeViewColumn column = (TreeViewColumn)sender;
+
+            ConfigurationState.Instance.Ui.ColumnSort.SortColumnId.Value  = column.SortColumnId;
+            ConfigurationState.Instance.Ui.ColumnSort.SortAscending.Value = column.SortOrder == SortType.Ascending;
+
+            SaveConfig();
         }
 
         private void Row_Activated(object sender, RowActivatedArgs args)

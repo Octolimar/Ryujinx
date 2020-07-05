@@ -13,7 +13,7 @@ namespace Ryujinx.Configuration
         /// <summary>
         /// The current version of the file format
         /// </summary>
-        public const int CurrentVersion = 7;
+        public const int CurrentVersion = 10;
 
         public int Version { get; set; }
 
@@ -113,6 +113,11 @@ namespace Ryujinx.Configuration
         public bool EnableMulticoreScheduling { get; set; }
 
         /// <summary>
+        /// Enables or disables profiled translation cache persistency
+        /// </summary>
+        public bool EnablePtc { get; set; }
+
+        /// <summary>
         /// Enables integrity checks on Game content files
         /// </summary>
         public bool EnableFsIntegrityChecks { get; set; }
@@ -123,6 +128,11 @@ namespace Ryujinx.Configuration
         public int FsGlobalAccessLogMode { get; set; }
 
         /// <summary>
+        /// The selected audio backend
+        /// </summary>
+        public AudioBackend AudioBackend { get; set; }
+
+        /// <summary>
         /// Enable or disable ignoring missing services
         /// </summary>
         public bool IgnoreMissingServices { get; set; }
@@ -131,6 +141,11 @@ namespace Ryujinx.Configuration
         /// Used to toggle columns in the GUI
         /// </summary>
         public GuiColumns GuiColumns { get; set; }
+
+        /// <summary>
+        /// Used to configure column sort settings in the GUI
+        /// </summary>
+        public ColumnSort ColumnSort { get; set; }
 
         /// <summary>
         /// A list of directories containing games to be used to load games into the games list
@@ -151,6 +166,11 @@ namespace Ryujinx.Configuration
         /// Enable or disable keyboard support (Independent from controllers binding)
         /// </summary>
         public bool EnableKeyboard { get; set; }
+
+        /// <summary>
+        /// Hotkey Keyboard Bindings
+        /// </summary>
+        public KeyboardHotkeys Hotkeys { get; set; }
 
         /// <summary>
         /// Keyboard control bindings

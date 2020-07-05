@@ -1,3 +1,4 @@
+using ARMeilleure.Translation.PTC;
 using LibHac;
 using LibHac.Account;
 using LibHac.Common;
@@ -6,7 +7,6 @@ using LibHac.FsSystem;
 using LibHac.FsSystem.NcaUtils;
 using LibHac.Ncm;
 using LibHac.Ns;
-using LibHac.Spl;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
 using Ryujinx.HLE.FileSystem;
@@ -31,17 +31,19 @@ namespace Ryujinx.HLE.HOS
         private readonly ContentManager _contentManager;
         private readonly VirtualFileSystem _fileSystem;
 
-        public IntegrityCheckLevel FsIntegrityCheckLevel => _device.System.FsIntegrityCheckLevel;
+        public BlitStruct<ApplicationControlProperty> ControlData { get; set; }
+
+        public string TitleName { get; private set; }
+        public string DisplayVersion { get; private set; }
 
         public ulong TitleId { get; private set; }
         public string TitleIdText => TitleId.ToString("x16");
-        public string TitleName { get; private set; }
-
-        public string TitleVersionString { get; private set; }
 
         public bool TitleIs64Bit { get; private set; }
 
-        public BlitStruct<ApplicationControlProperty> ControlData { get; set; }
+        public bool EnablePtc => _device.System.EnablePtc;
+
+        public IntegrityCheckLevel FsIntegrityCheckLevel => _device.System.FsIntegrityCheckLevel;
 
         public ApplicationLoader(Switch device, VirtualFileSystem fileSystem, ContentManager contentManager)
         {
@@ -69,7 +71,7 @@ namespace Ryujinx.HLE.HOS
             }
         }
 
-        private (Nca Main, Nca Patch, Nca Control) GetGameData(PartitionFileSystem pfs)
+        private (Nca main, Nca patch, Nca control) GetGameData(PartitionFileSystem pfs)
         {
             Nca mainNca = null;
             Nca patchNca = null;
@@ -144,6 +146,9 @@ namespace Ryujinx.HLE.HOS
 
             _contentManager.LoadEntries(_device);
 
+            _contentManager.ClearAocData();
+            _contentManager.AddAocData(securePartition, xciFile, mainNca.Header.TitleId);
+
             LoadNca(mainNca, patchNca, controlNca);
         }
 
@@ -177,6 +182,9 @@ namespace Ryujinx.HLE.HOS
 
             if (mainNca != null)
             {
+                _contentManager.ClearAocData();
+                _contentManager.AddAocData(nsp, nspFile, mainNca.Header.TitleId);
+
                 LoadNca(mainNca, patchNca, controlNca);
 
                 return;
@@ -207,7 +215,8 @@ namespace Ryujinx.HLE.HOS
             IStorage dataStorage = null;
             IFileSystem codeFs = null;
 
-            string titleUpdateMetadataPath = System.IO.Path.Combine(_fileSystem.GetBasePath(), "games", mainNca.Header.TitleId.ToString("x16"), "updates.json");
+            // Load Update
+            string titleUpdateMetadataPath = Path.Combine(_fileSystem.GetBasePath(), "games", mainNca.Header.TitleId.ToString("x16"), "updates.json");
 
             if (File.Exists(titleUpdateMetadataPath))
             {
@@ -239,6 +248,22 @@ namespace Ryujinx.HLE.HOS
                         {
                             controlNca = nca;
                         }
+                    }
+                }
+            }
+
+            // Load Aoc
+            string titleAocMetadataPath = Path.Combine(_fileSystem.GetBasePath(), "games", mainNca.Header.TitleId.ToString("x16"), "dlc.json");
+
+            if (File.Exists(titleAocMetadataPath))
+            {
+                List<DlcContainer> dlcContainerList = JsonHelper.DeserializeFromFile<List<DlcContainer>>(titleAocMetadataPath);
+
+                foreach (DlcContainer dlcContainer in dlcContainerList)
+                {
+                    foreach (DlcNca dlcNca in dlcContainer.DlcNcaList)
+                    {
+                        _contentManager.AddAocItem(dlcNca.TitleId, dlcContainer.Path, dlcNca.Path, dlcNca.Enabled);
                     }
                 }
             }
@@ -284,11 +309,6 @@ namespace Ryujinx.HLE.HOS
                 _fileSystem.SetRomFs(dataStorage.AsStream(FileAccess.Read));
             }
 
-            LoadExeFs(codeFs, out Npdm metaData);
-
-            TitleId = metaData.Aci0.TitleId;
-            TitleIs64Bit = metaData.Is64Bit;
-
             if (controlNca != null)
             {
                 ReadControlData(controlNca);
@@ -298,12 +318,14 @@ namespace Ryujinx.HLE.HOS
                 ControlData.ByteSpan.Clear();
             }
 
+            LoadExeFs(codeFs, out _);
+
             if (TitleId != 0)
             {
                 EnsureSaveData(new TitleId(TitleId));
             }
 
-            Logger.PrintInfo(LogClass.Loader, $"Application Loaded: {TitleName} v{TitleVersionString} [{TitleIdText}] [{(TitleIs64Bit ? "64-bit" : "32-bit")}]");
+            Logger.PrintInfo(LogClass.Loader, $"Application Loaded: {TitleName} v{DisplayVersion} [{TitleIdText}] [{(TitleIs64Bit ? "64-bit" : "32-bit")}]");
         }
 
         public void ReadControlData(Nca controlNca)
@@ -327,7 +349,7 @@ namespace Ryujinx.HLE.HOS
                             .FirstOrDefault(x => x.Name[0] != 0).Name.ToString();
                     }
 
-                    TitleVersionString = ControlData.Value.DisplayVersion.ToString();
+                    DisplayVersion = ControlData.Value.DisplayVersion.ToString();
                 }
             }
             else
@@ -382,6 +404,8 @@ namespace Ryujinx.HLE.HOS
 
             _contentManager.LoadEntries(_device);
 
+            Ptc.Initialize(TitleIdText, DisplayVersion, EnablePtc);
+
             ProgramLoader.LoadNsos(_device.System.KernelContext, metaData, executables: nsos.ToArray());
         }
 
@@ -391,13 +415,13 @@ namespace Ryujinx.HLE.HOS
 
             bool isNro = Path.GetExtension(filePath).ToLower() == ".nro";
 
-            IExecutable nro;
+            IExecutable executable;
 
             if (isNro)
             {
                 FileStream input = new FileStream(filePath, FileMode.Open);
                 NroExecutable obj = new NroExecutable(input);
-                nro = obj;
+                executable = obj;
 
                 // homebrew NRO can actually have some data after the actual NRO
                 if (input.Length > obj.FileSize)
@@ -469,7 +493,7 @@ namespace Ryujinx.HLE.HOS
             }
             else
             {
-                nro = new NsoExecutable(new LocalStorage(filePath, FileAccess.Read));
+                executable = new NsoExecutable(new LocalStorage(filePath, FileAccess.Read));
             }
 
             _contentManager.LoadEntries(_device);
@@ -478,7 +502,7 @@ namespace Ryujinx.HLE.HOS
             TitleId = metaData.Aci0.TitleId;
             TitleIs64Bit = metaData.Is64Bit;
 
-            ProgramLoader.LoadNsos(_device.System.KernelContext, metaData, executables: nro);
+            ProgramLoader.LoadNsos(_device.System.KernelContext, metaData, executables: executable);
         }
 
         private Npdm GetDefaultNpdm()

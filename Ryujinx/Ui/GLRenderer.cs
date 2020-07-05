@@ -1,3 +1,4 @@
+﻿using ARMeilleure.Translation.PTC;
 using Gdk;
 using OpenTK;
 using OpenTK.Graphics;
@@ -183,8 +184,8 @@ namespace Ryujinx.Ui
                 string titleNameSection = string.IsNullOrWhiteSpace(_device.Application.TitleName) ? string.Empty
                     : $" - {_device.Application.TitleName}";
 
-                string titleVersionSection = string.IsNullOrWhiteSpace(_device.Application.TitleVersionString) ? string.Empty
-                    : $" v{_device.Application.TitleVersionString}";
+                string titleVersionSection = string.IsNullOrWhiteSpace(_device.Application.DisplayVersion) ? string.Empty
+                    : $" v{_device.Application.DisplayVersion}";
 
                 string titleIdSection = string.IsNullOrWhiteSpace(_device.Application.TitleIdText) ? string.Empty
                     : $" ({_device.Application.TitleIdText.ToUpper()})";
@@ -378,13 +379,23 @@ namespace Ryujinx.Ui
             {
                 Gtk.Application.Invoke(delegate
                 {
-                    HandleScreenState(OpenTK.Input.Keyboard.GetState());
+                    KeyboardState keyboard = OpenTK.Input.Keyboard.GetState();
+
+                    HandleScreenState(keyboard);
+
+                    if (keyboard.IsKeyDown(OpenTK.Input.Key.Delete))
+                    {
+                        if (!ParentWindow.State.HasFlag(Gdk.WindowState.Fullscreen))
+                        {
+                            Ptc.Continue();
+                        }
+                    }
                 });
             }
 
             List<GamepadInput> gamepadInputs = new List<GamepadInput>();
 
-            foreach (InputConfig inputConfig in ConfigurationState.Instance.Hid.InputConfig.Value)
+            foreach (InputConfig inputConfig in ConfigurationState.Instance.Hid.InputConfig.Value.ToArray())
             {
                 ControllerKeys   currentButton = 0;
                 JoystickPosition leftJoystick  = new JoystickPosition();
@@ -438,17 +449,6 @@ namespace Ryujinx.Ui
                         {
                             _device.Hid.Keyboard.Update(hidKeyboard.Value);
                         }
-
-                        // Toggle vsync
-                        HotkeyButtons currentHotkeyButtons = keyboardController.GetHotkeyButtons();
-
-                        if (currentHotkeyButtons.HasFlag(HotkeyButtons.ToggleVSync) &&
-                            !_prevHotkeyButtons.HasFlag(HotkeyButtons.ToggleVSync))
-                        {
-                            _device.EnableDeviceVsync = !_device.EnableDeviceVsync;
-                        }
-
-                        _prevHotkeyButtons = currentHotkeyButtons;
                     }
                 }
                 else if (inputConfig is Common.Configuration.Hid.ControllerConfig controllerConfig)
@@ -486,6 +486,17 @@ namespace Ryujinx.Ui
             }
 
             _device.Hid.Npads.SetGamepadsInput(gamepadInputs.ToArray());
+
+            // Hotkeys
+            HotkeyButtons currentHotkeyButtons = KeyboardController.GetHotkeyButtons(OpenTK.Input.Keyboard.GetState());
+
+            if (currentHotkeyButtons.HasFlag(HotkeyButtons.ToggleVSync) &&
+                !_prevHotkeyButtons.HasFlag(HotkeyButtons.ToggleVSync))
+            {
+                _device.EnableDeviceVsync = !_device.EnableDeviceVsync;
+            }
+
+            _prevHotkeyButtons = currentHotkeyButtons;
 
             //Touchscreen
             bool hasTouch = false;

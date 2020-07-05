@@ -38,6 +38,8 @@ namespace Ryujinx.Graphics.Gpu.Engine
         private bool _isAnyVbInstanced;
         private bool _vsUsesInstanceId;
 
+        private bool _forceShaderUpdate;
+
         /// <summary>
         /// Creates a new instance of the GPU methods class.
         /// </summary>
@@ -76,6 +78,10 @@ namespace Ryujinx.Graphics.Gpu.Engine
             state.RegisterCallback(MethodOffset.InvalidateTextures,  InvalidateTextures);
             state.RegisterCallback(MethodOffset.TextureBarrierTiled, TextureBarrierTiled);
 
+            state.RegisterCallback(MethodOffset.VbElementU8,  VbElementU8);
+            state.RegisterCallback(MethodOffset.VbElementU16, VbElementU16);
+            state.RegisterCallback(MethodOffset.VbElementU32, VbElementU32);
+
             state.RegisterCallback(MethodOffset.ResetCounter, ResetCounter);
 
             state.RegisterCallback(MethodOffset.DrawEnd,   DrawEnd);
@@ -104,6 +110,7 @@ namespace Ryujinx.Graphics.Gpu.Engine
         /// <param name="state">GPU state where the triggers will be registered</param>
         public void RegisterCallbacksForFifo(GpuState state)
         {
+            state.RegisterCallback(MethodOffset.Semaphore,              Semaphore);
             state.RegisterCallback(MethodOffset.FenceAction,            FenceAction);
             state.RegisterCallback(MethodOffset.WaitForIdle,            WaitForIdle);
             state.RegisterCallback(MethodOffset.SendMacroCodeData,      SendMacroCodeData);
@@ -120,8 +127,10 @@ namespace Ryujinx.Graphics.Gpu.Engine
             // Shaders must be the first one to be updated if modified, because
             // some of the other state depends on information from the currently
             // bound shaders.
-            if (state.QueryModified(MethodOffset.ShaderBaseAddress, MethodOffset.ShaderState))
+            if (state.QueryModified(MethodOffset.ShaderBaseAddress, MethodOffset.ShaderState) || _forceShaderUpdate)
             {
+                _forceShaderUpdate = false;
+
                 UpdateShaderState(state);
             }
 
@@ -292,9 +301,7 @@ namespace Ryujinx.Graphics.Gpu.Engine
 
                     sbDescAddress += (ulong)sbDescOffset;
 
-                    ReadOnlySpan<byte> sbDescriptorData = _context.PhysicalMemory.GetSpan(sbDescAddress, 0x10);
-
-                    SbDescriptor sbDescriptor = MemoryMarshal.Cast<byte, SbDescriptor>(sbDescriptorData)[0];
+                    SbDescriptor sbDescriptor = _context.PhysicalMemory.Read<SbDescriptor>(sbDescAddress);
 
                     BufferManager.SetGraphicsStorageBuffer(stage, sb.Slot, sbDescriptor.PackAddress(), (uint)sbDescriptor.Size);
                 }
@@ -424,10 +431,23 @@ namespace Ryujinx.Graphics.Gpu.Engine
 
             _context.Renderer.Pipeline.SetDepthMode(depthMode);
 
-            bool flipY = (state.Get<YControl>(MethodOffset.YControl) & YControl.NegateY) != 0;
-            float yFlip = flipY ? -1 : 1;
+            YControl yControl = state.Get<YControl>(MethodOffset.YControl);
 
-            Viewport[] viewports = new Viewport[Constants.TotalViewports];
+            bool   flipY  = yControl.HasFlag(YControl.NegateY);
+            Origin origin = yControl.HasFlag(YControl.TriangleRastFlip) ? Origin.LowerLeft : Origin.UpperLeft;
+            
+            _context.Renderer.Pipeline.SetOrigin(origin);
+
+            // The triangle rast flip flag only affects rasterization, the viewport is not flipped.
+            // Setting the origin mode to upper left on the host, however, not only affects rasterization,
+            // but also flips the viewport.
+            // We negate the effects of flipping the viewport by flipping it again using the viewport swizzle.
+            if (origin == Origin.UpperLeft)
+            {
+                flipY = !flipY;
+            }
+
+            Span<Viewport> viewports = stackalloc Viewport[Constants.TotalViewports];
 
             for (int index = 0; index < Constants.TotalViewports; index++)
             {
@@ -437,17 +457,42 @@ namespace Ryujinx.Graphics.Gpu.Engine
                 float x = transform.TranslateX - MathF.Abs(transform.ScaleX);
                 float y = transform.TranslateY - MathF.Abs(transform.ScaleY);
 
-                float width  = transform.ScaleX * 2;
-                float height = transform.ScaleY * 2 * yFlip;
+                float width  = MathF.Abs(transform.ScaleX) * 2;
+                float height = MathF.Abs(transform.ScaleY) * 2;
 
                 RectangleF region = new RectangleF(x, y, width, height);
 
+                ViewportSwizzle swizzleX = transform.UnpackSwizzleX();
+                ViewportSwizzle swizzleY = transform.UnpackSwizzleY();
+                ViewportSwizzle swizzleZ = transform.UnpackSwizzleZ();
+                ViewportSwizzle swizzleW = transform.UnpackSwizzleW();
+
+                if (transform.ScaleX < 0)
+                {
+                    swizzleX ^= ViewportSwizzle.NegativeFlag;
+                }
+
+                if (flipY)
+                {
+                    swizzleY ^= ViewportSwizzle.NegativeFlag;
+                }
+
+                if (transform.ScaleY < 0)
+                {
+                    swizzleY ^= ViewportSwizzle.NegativeFlag;
+                }
+
+                if (transform.ScaleZ < 0)
+                {
+                    swizzleZ ^= ViewportSwizzle.NegativeFlag;
+                }
+
                 viewports[index] = new Viewport(
                     region,
-                    transform.UnpackSwizzleX(),
-                    transform.UnpackSwizzleY(),
-                    transform.UnpackSwizzleZ(),
-                    transform.UnpackSwizzleW(),
+                    swizzleX,
+                    swizzleY,
+                    swizzleZ,
+                    swizzleW,
                     extents.DepthNear,
                     extents.DepthFar);
             }
@@ -685,7 +730,7 @@ namespace Ryujinx.Graphics.Gpu.Engine
 
                 ulong size;
 
-                if (_drawIndexed || stride == 0 || instanced)
+                if (_inlineIndexCount != 0 || _drawIndexed || stride == 0 || instanced)
                 {
                     // This size may be (much) larger than the real vertex buffer size.
                     // Avoid calculating it this way, unless we don't have any other option.

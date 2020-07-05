@@ -1,4 +1,4 @@
-using Ryujinx.Common;
+﻿using Ryujinx.Common;
 using Ryujinx.Common.Configuration.Hid;
 using Ryujinx.Common.Logging;
 using Ryujinx.Configuration.Hid;
@@ -44,10 +44,27 @@ namespace Ryujinx.Configuration
                 }
             }
 
+            public class ColumnSortSettings
+            {
+                public ReactiveObject<int>  SortColumnId  { get; private set; }
+                public ReactiveObject<bool> SortAscending { get; private set; }
+
+                public ColumnSortSettings()
+                {
+                    SortColumnId  = new ReactiveObject<int>();
+                    SortAscending = new ReactiveObject<bool>();
+                }
+            }
+
             /// <summary>
             /// Used to toggle columns in the GUI
             /// </summary>
             public Columns GuiColumns { get; private set; }
+
+            /// <summary>
+            /// Used to configure column sort settings in the GUI
+            /// </summary>
+            public ColumnSortSettings ColumnSort { get; private set; }
 
             /// <summary>
             /// A list of directories containing games to be used to load games into the games list
@@ -67,6 +84,7 @@ namespace Ryujinx.Configuration
             public UiSection()
             {
                 GuiColumns        = new Columns();
+                ColumnSort        = new ColumnSortSettings();
                 GameDirs          = new ReactiveObject<List<string>>();
                 EnableCustomTheme = new ReactiveObject<bool>();
                 CustomThemePath   = new ReactiveObject<string>();
@@ -173,6 +191,11 @@ namespace Ryujinx.Configuration
             public ReactiveObject<bool> EnableMulticoreScheduling { get; private set; }
 
             /// <summary>
+            /// Enables or disables profiled translation cache persistency
+            /// </summary>
+            public ReactiveObject<bool> EnablePtc { get; private set; }
+
+            /// <summary>
             /// Enables integrity checks on Game content files
             /// </summary>
             public ReactiveObject<bool> EnableFsIntegrityChecks { get; private set; }
@@ -181,6 +204,11 @@ namespace Ryujinx.Configuration
             /// Enables FS access log output to the console. Possible modes are 0-3
             /// </summary>
             public ReactiveObject<int> FsGlobalAccessLogMode { get; private set; }
+
+            /// <summary>
+            /// The selected audio backend
+            /// </summary>
+            public ReactiveObject<AudioBackend> AudioBackend { get; private set; }
 
             /// <summary>
             /// Enable or disable ignoring missing services
@@ -195,8 +223,10 @@ namespace Ryujinx.Configuration
                 SystemTimeOffset          = new ReactiveObject<long>();
                 EnableDockedMode          = new ReactiveObject<bool>();
                 EnableMulticoreScheduling = new ReactiveObject<bool>();
+                EnablePtc                 = new ReactiveObject<bool>();
                 EnableFsIntegrityChecks   = new ReactiveObject<bool>();
                 FsGlobalAccessLogMode     = new ReactiveObject<int>();
+                AudioBackend              = new ReactiveObject<AudioBackend>();
                 IgnoreMissingServices     = new ReactiveObject<bool>();
             }
         }
@@ -212,6 +242,11 @@ namespace Ryujinx.Configuration
             public ReactiveObject<bool> EnableKeyboard { get; private set; }
 
             /// <summary>
+            /// Hotkey Keyboard Bindings
+            /// </summary>
+            public ReactiveObject<KeyboardHotkeys> Hotkeys { get; private set; }
+
+            /// <summary>
             /// Input device configuration.
             /// NOTE: This ReactiveObject won't issue an event when the List has elements added or removed.
             /// TODO: Implement a ReactiveList class.
@@ -221,6 +256,7 @@ namespace Ryujinx.Configuration
             public HidSection()
             {
                 EnableKeyboard = new ReactiveObject<bool>();
+                Hotkeys        = new ReactiveObject<KeyboardHotkeys>();
                 InputConfig    = new ReactiveObject<List<InputConfig>>();
             }
         }
@@ -337,10 +373,12 @@ namespace Ryujinx.Configuration
                 EnableDiscordIntegration  = EnableDiscordIntegration,
                 EnableVsync               = Graphics.EnableVsync,
                 EnableMulticoreScheduling = System.EnableMulticoreScheduling,
+                EnablePtc                 = System.EnablePtc,
                 EnableFsIntegrityChecks   = System.EnableFsIntegrityChecks,
                 FsGlobalAccessLogMode     = System.FsGlobalAccessLogMode,
+                AudioBackend              = System.AudioBackend,
                 IgnoreMissingServices     = System.IgnoreMissingServices,
-                GuiColumns                = new GuiColumns()
+                GuiColumns                = new GuiColumns
                 {
                     FavColumn        = Ui.GuiColumns.FavColumn,
                     IconColumn       = Ui.GuiColumns.IconColumn,
@@ -353,10 +391,16 @@ namespace Ryujinx.Configuration
                     FileSizeColumn   = Ui.GuiColumns.FileSizeColumn,
                     PathColumn       = Ui.GuiColumns.PathColumn,
                 },
+                ColumnSort                = new ColumnSort
+                {
+                    SortColumnId  = Ui.ColumnSort.SortColumnId,
+                    SortAscending = Ui.ColumnSort.SortAscending
+                },
                 GameDirs                  = Ui.GameDirs,
                 EnableCustomTheme         = Ui.EnableCustomTheme,
                 CustomThemePath           = Ui.CustomThemePath,
                 EnableKeyboard            = Hid.EnableKeyboard,
+                Hotkeys                   = Hid.Hotkeys,
                 KeyboardConfig            = keyboardConfigList,
                 ControllerConfig          = controllerConfigList
             };
@@ -385,8 +429,10 @@ namespace Ryujinx.Configuration
             EnableDiscordIntegration.Value         = true;
             Graphics.EnableVsync.Value             = true;
             System.EnableMulticoreScheduling.Value = true;
+            System.EnablePtc.Value                 = false;
             System.EnableFsIntegrityChecks.Value   = true;
             System.FsGlobalAccessLogMode.Value     = 0;
+            System.AudioBackend.Value              = AudioBackend.OpenAl;
             System.IgnoreMissingServices.Value     = false;
             Ui.GuiColumns.FavColumn.Value          = true;
             Ui.GuiColumns.IconColumn.Value         = true;
@@ -398,10 +444,17 @@ namespace Ryujinx.Configuration
             Ui.GuiColumns.FileExtColumn.Value      = true;
             Ui.GuiColumns.FileSizeColumn.Value     = true;
             Ui.GuiColumns.PathColumn.Value         = true;
+            Ui.ColumnSort.SortColumnId.Value       = 0;
+            Ui.ColumnSort.SortAscending.Value      = false;
             Ui.GameDirs.Value                      = new List<string>();
             Ui.EnableCustomTheme.Value             = false;
             Ui.CustomThemePath.Value               = "";
             Hid.EnableKeyboard.Value               = false;
+            
+            Hid.Hotkeys.Value = new KeyboardHotkeys
+            {
+                ToggleVsync = Key.Tab
+            };
 
             Hid.InputConfig.Value = new List<InputConfig>
             {
@@ -443,10 +496,6 @@ namespace Ryujinx.Configuration
                         ButtonZr    = Key.O,
                         ButtonSl    = Key.PageUp,
                         ButtonSr    = Key.PageDown
-                    },
-                    Hotkeys        = new KeyboardHotkeys
-                    {
-                        ToggleVsync = Key.Tab
                     }
                 }
             };
@@ -506,7 +555,8 @@ namespace Ryujinx.Configuration
                 Common.Logging.Logger.PrintWarning(LogClass.Application, $"Outdated configuration version {configurationFileFormat.Version}, migrating to version 6.");
 
                 configurationFileFormat.ControllerConfig = new List<ControllerConfig>();
-                configurationFileFormat.KeyboardConfig   = new List<KeyboardConfig>{
+                configurationFileFormat.KeyboardConfig   = new List<KeyboardConfig>
+                {
                     new KeyboardConfig
                     {
                         Index          = 0,
@@ -545,10 +595,6 @@ namespace Ryujinx.Configuration
                             ButtonZr    = Key.O,
                             ButtonSl    = Key.Unbound,
                             ButtonSr    = Key.Unbound
-                        },
-                        Hotkeys        = new KeyboardHotkeys
-                        {
-                            ToggleVsync = Key.Tab
                         }
                     }
                 };
@@ -570,15 +616,45 @@ namespace Ryujinx.Configuration
                 }
             }
 
+            if (configurationFileFormat.Version < 8)
+            {
+                Common.Logging.Logger.PrintWarning(LogClass.Application, $"Outdated configuration version {configurationFileFormat.Version}, migrating to version 8.");
+
+                configurationFileFormat.EnablePtc = false;
+
+                configurationFileUpdated = true;
+            }
+
+            if (configurationFileFormat.Version < 9)
+            {
+                Common.Logging.Logger.PrintWarning(LogClass.Application, $"Outdated configuration version {configurationFileFormat.Version}, migrating to version 9.");
+
+                configurationFileFormat.ColumnSort = new ColumnSort
+                {
+                    SortColumnId  = 0,
+                    SortAscending = false
+                };
+
+                configurationFileFormat.Hotkeys = new KeyboardHotkeys
+                {
+                    ToggleVsync = Key.Tab
+                };
+
+                configurationFileUpdated = true;
+            }
+
+            if (configurationFileFormat.Version < 10)
+            {
+                Common.Logging.Logger.PrintWarning(LogClass.Application, $"Outdated configuration version {configurationFileFormat.Version}, migrating to version 10.");
+
+                configurationFileFormat.AudioBackend = AudioBackend.OpenAl;
+
+                configurationFileUpdated = true;
+            }
+
             List<InputConfig> inputConfig = new List<InputConfig>();
-            foreach (ControllerConfig controllerConfig in configurationFileFormat.ControllerConfig)
-            {
-                inputConfig.Add(controllerConfig);
-            }
-            foreach (KeyboardConfig keyboardConfig in configurationFileFormat.KeyboardConfig)
-            {
-                inputConfig.Add(keyboardConfig);
-            }
+            inputConfig.AddRange(configurationFileFormat.ControllerConfig);
+            inputConfig.AddRange(configurationFileFormat.KeyboardConfig);
 
             Graphics.MaxAnisotropy.Value           = configurationFileFormat.MaxAnisotropy;
             Graphics.ShadersDumpPath.Value         = configurationFileFormat.GraphicsShadersDumpPath;
@@ -596,12 +672,13 @@ namespace Ryujinx.Configuration
             System.TimeZone.Value                  = configurationFileFormat.SystemTimeZone;
             System.SystemTimeOffset.Value          = configurationFileFormat.SystemTimeOffset;
             System.EnableDockedMode.Value          = configurationFileFormat.DockedMode;
-            System.EnableDockedMode.Value          = configurationFileFormat.DockedMode;
             EnableDiscordIntegration.Value         = configurationFileFormat.EnableDiscordIntegration;
             Graphics.EnableVsync.Value             = configurationFileFormat.EnableVsync;
             System.EnableMulticoreScheduling.Value = configurationFileFormat.EnableMulticoreScheduling;
+            System.EnablePtc.Value                 = configurationFileFormat.EnablePtc;
             System.EnableFsIntegrityChecks.Value   = configurationFileFormat.EnableFsIntegrityChecks;
             System.FsGlobalAccessLogMode.Value     = configurationFileFormat.FsGlobalAccessLogMode;
+            System.AudioBackend.Value              = configurationFileFormat.AudioBackend;
             System.IgnoreMissingServices.Value     = configurationFileFormat.IgnoreMissingServices;
             Ui.GuiColumns.FavColumn.Value          = configurationFileFormat.GuiColumns.FavColumn;
             Ui.GuiColumns.IconColumn.Value         = configurationFileFormat.GuiColumns.IconColumn;
@@ -613,10 +690,13 @@ namespace Ryujinx.Configuration
             Ui.GuiColumns.FileExtColumn.Value      = configurationFileFormat.GuiColumns.FileExtColumn;
             Ui.GuiColumns.FileSizeColumn.Value     = configurationFileFormat.GuiColumns.FileSizeColumn;
             Ui.GuiColumns.PathColumn.Value         = configurationFileFormat.GuiColumns.PathColumn;
+            Ui.ColumnSort.SortColumnId.Value       = configurationFileFormat.ColumnSort.SortColumnId;
+            Ui.ColumnSort.SortAscending.Value      = configurationFileFormat.ColumnSort.SortAscending;
             Ui.GameDirs.Value                      = configurationFileFormat.GameDirs;
             Ui.EnableCustomTheme.Value             = configurationFileFormat.EnableCustomTheme;
             Ui.CustomThemePath.Value               = configurationFileFormat.CustomThemePath;
             Hid.EnableKeyboard.Value               = configurationFileFormat.EnableKeyboard;
+            Hid.Hotkeys.Value                      = configurationFileFormat.Hotkeys;
             Hid.InputConfig.Value                  = inputConfig;
 
             if (configurationFileUpdated)
